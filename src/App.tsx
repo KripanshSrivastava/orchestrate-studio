@@ -3,7 +3,13 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import { AppLayout } from "./components/layout/AppLayout";
+import Dashboard from "./pages/Dashboard";
+import WorkflowStudio from "./pages/WorkflowStudio";
+import Applications from "./pages/Applications";
+import Monitoring from "./pages/Monitoring";
+import Security from "./pages/Security";
+import Infrastructure from "./pages/Infrastructure";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -15,8 +21,21 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/workflows" element={<WorkflowStudio />} />
+            <Route path="/applications" element={<Applications />} />
+            <Route path="/monitoring" element={<Monitoring />} />
+            <Route path="/security" element={<Security />} />
+            <Route path="/infrastructure" element={<Infrastructure />} />
+            {/* Placeholder routes */}
+            <Route path="/pipelines" element={<Dashboard />} />
+            <Route path="/deployments" element={<Dashboard />} />
+            <Route path="/metrics" element={<Monitoring />} />
+            <Route path="/logs" element={<Monitoring />} />
+            <Route path="/alerts" element={<Monitoring />} />
+            <Route path="/settings" element={<Dashboard />} />
+          </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
