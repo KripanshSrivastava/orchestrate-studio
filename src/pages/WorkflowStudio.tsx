@@ -1,25 +1,18 @@
 import { useState, useRef, useCallback } from "react";
 import {
-  GitBranch,
-  Github,
-  Gitlab,
-  Box,
-  Shield,
-  Cloud,
-  Rocket,
-  Activity,
-  Server,
-  Settings,
   Play,
   Square,
   ChevronRight,
   X,
+  Settings,
   FileText,
   BarChart3,
   History,
   Cpu,
   Layers,
+  Search,
 } from "lucide-react";
+import { nodeLibrary, nodeIconMap } from "@/data/nodeLibrary";
 
 // Node type definitions
 interface WorkflowNodeData {
@@ -38,85 +31,6 @@ interface Connection {
   to: string;
 }
 
-const nodeLibrary = [
-  {
-    category: "Source",
-    icon: GitBranch,
-    nodes: [
-      { type: "github", label: "GitHub", icon: "github" },
-      { type: "gitlab", label: "GitLab", icon: "gitlab" },
-    ],
-  },
-  {
-    category: "CI",
-    icon: Play,
-    nodes: [
-      { type: "jenkins", label: "Jenkins", icon: "ci" },
-      { type: "gh-actions", label: "GitHub Actions", icon: "ci" },
-    ],
-  },
-  {
-    category: "Security",
-    icon: Shield,
-    nodes: [
-      { type: "sonarqube", label: "SonarQube", icon: "security" },
-      { type: "trivy", label: "Trivy", icon: "security" },
-    ],
-  },
-  {
-    category: "Registry",
-    icon: Box,
-    nodes: [
-      { type: "dockerhub", label: "Docker Hub", icon: "registry" },
-      { type: "harbor", label: "Harbor", icon: "registry" },
-    ],
-  },
-  {
-    category: "Deploy",
-    icon: Rocket,
-    nodes: [
-      { type: "argocd", label: "ArgoCD", icon: "deploy" },
-      { type: "fluxcd", label: "FluxCD", icon: "deploy" },
-    ],
-  },
-  {
-    category: "Kubernetes",
-    icon: Cloud,
-    nodes: [
-      { type: "k8s-deploy", label: "Deployment", icon: "k8s" },
-      { type: "k8s-hpa", label: "HPA", icon: "k8s" },
-      { type: "k8s-ingress", label: "Ingress", icon: "k8s" },
-    ],
-  },
-  {
-    category: "Monitoring",
-    icon: Activity,
-    nodes: [
-      { type: "prometheus", label: "Prometheus", icon: "monitoring" },
-      { type: "grafana", label: "Grafana", icon: "monitoring" },
-    ],
-  },
-  {
-    category: "Infrastructure",
-    icon: Server,
-    nodes: [
-      { type: "terraform", label: "Terraform", icon: "infra" },
-    ],
-  },
-];
-
-const nodeIconMap: Record<string, React.ElementType> = {
-  github: Github,
-  gitlab: Gitlab,
-  ci: Play,
-  security: Shield,
-  registry: Box,
-  deploy: Rocket,
-  k8s: Cloud,
-  monitoring: Activity,
-  infra: Server,
-};
-
 const statusColor: Record<string, string> = {
   idle: "border-node-border",
   success: "border-success",
@@ -131,27 +45,40 @@ const statusGlow: Record<string, string> = {
   failed: "shadow-destructive/20",
 };
 
-// Demo workflow
+// Full DevOps lifecycle pipeline
 const initialNodes: WorkflowNodeData[] = [
-  { id: "1", type: "github", label: "GitHub", icon: "github", category: "Source", x: 80, y: 200, status: "success" },
-  { id: "2", type: "gh-actions", label: "GitHub Actions", icon: "ci", category: "CI", x: 300, y: 200, status: "success" },
-  { id: "3", type: "sonarqube", label: "SonarQube", icon: "security", category: "Security", x: 520, y: 120, status: "success" },
-  { id: "4", type: "trivy", label: "Trivy", icon: "security", category: "Security", x: 520, y: 280, status: "running" },
-  { id: "5", type: "dockerhub", label: "Docker Hub", icon: "registry", category: "Registry", x: 740, y: 200, status: "idle" },
-  { id: "6", type: "argocd", label: "ArgoCD", icon: "deploy", category: "Deploy", x: 960, y: 200, status: "idle" },
-  { id: "7", type: "k8s-deploy", label: "K8s Deploy", icon: "k8s", category: "Kubernetes", x: 1180, y: 140, status: "idle" },
-  { id: "8", type: "prometheus", label: "Prometheus", icon: "monitoring", category: "Monitoring", x: 1180, y: 280, status: "idle" },
+  { id: "1", type: "github", label: "GitHub", icon: "source", category: "Developer Stage", x: 60, y: 220, status: "success" },
+  { id: "2", type: "snyk", label: "Snyk", icon: "dep-scan", category: "Dependency Scanning", x: 260, y: 220, status: "success" },
+  { id: "3", type: "gh-actions", label: "GitHub Actions", icon: "ci", category: "CI Pipeline", x: 460, y: 220, status: "success" },
+  { id: "4", type: "sonarqube", label: "SonarQube", icon: "sast", category: "Static Code Analysis", x: 660, y: 130, status: "success" },
+  { id: "5", type: "cypress", label: "Cypress", icon: "testing", category: "Testing", x: 660, y: 310, status: "success" },
+  { id: "6", type: "trivy", label: "Trivy", icon: "container-sec", category: "Container Security", x: 880, y: 220, status: "running" },
+  { id: "7", type: "dockerhub", label: "Docker Hub", icon: "registry", category: "Container Registry", x: 1100, y: 220, status: "idle" },
+  { id: "8", type: "argocd", label: "ArgoCD", icon: "deploy", category: "CD Deployment", x: 1320, y: 220, status: "idle" },
+  { id: "9", type: "k8s-deploy", label: "Deployments", icon: "k8s", category: "Kubernetes Runtime", x: 1540, y: 140, status: "idle" },
+  { id: "10", type: "falco", label: "Falco", icon: "k8s-sec", category: "Kubernetes Security", x: 1540, y: 300, status: "idle" },
+  { id: "11", type: "prometheus", label: "Prometheus", icon: "monitoring", category: "Monitoring", x: 1760, y: 140, status: "idle" },
+  { id: "12", type: "elk-stack", label: "ELK Stack", icon: "logging", category: "Logging", x: 1760, y: 300, status: "idle" },
+  { id: "13", type: "alertmanager", label: "Alertmanager", icon: "alerting", category: "Alerting", x: 1980, y: 220, status: "idle" },
+  { id: "14", type: "hpa", label: "HPA", icon: "scaling", category: "Auto Scaling", x: 2200, y: 220, status: "idle" },
 ];
 
 const initialConnections: Connection[] = [
   { from: "1", to: "2" },
   { from: "2", to: "3" },
-  { from: "2", to: "4" },
+  { from: "3", to: "4" },
   { from: "3", to: "5" },
-  { from: "4", to: "5" },
+  { from: "4", to: "6" },
   { from: "5", to: "6" },
   { from: "6", to: "7" },
-  { from: "6", to: "8" },
+  { from: "7", to: "8" },
+  { from: "8", to: "9" },
+  { from: "8", to: "10" },
+  { from: "9", to: "11" },
+  { from: "9", to: "12" },
+  { from: "11", to: "13" },
+  { from: "12", to: "13" },
+  { from: "13", to: "14" },
 ];
 
 export default function WorkflowStudio() {
@@ -161,7 +88,28 @@ export default function WorkflowStudio() {
   const [configTab, setConfigTab] = useState<"config" | "logs" | "metrics" | "history">("config");
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(nodeLibrary.map(c => c.category)));
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  const toggleCategory = (cat: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
+
+  const filteredLibrary = nodeLibrary
+    .map((group) => ({
+      ...group,
+      nodes: group.nodes.filter((n) =>
+        n.label.toLowerCase().includes(librarySearch.toLowerCase()) ||
+        group.category.toLowerCase().includes(librarySearch.toLowerCase())
+      ),
+    }))
+    .filter((group) => group.nodes.length > 0);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, nodeId: string) => {
@@ -199,35 +147,51 @@ export default function WorkflowStudio() {
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden animate-fade-in">
       {/* Node Library */}
-      <div className="w-56 border-r border-border bg-card overflow-y-auto shrink-0">
+      <div className="w-60 border-r border-border bg-card overflow-y-auto shrink-0">
         <div className="p-3 border-b border-border">
           <h3 className="text-sm font-semibold text-foreground">Node Library</h3>
           <p className="text-xs text-muted-foreground mt-0.5">Drag nodes to canvas</p>
+          <div className="relative mt-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              value={librarySearch}
+              onChange={(e) => setLibrarySearch(e.target.value)}
+              placeholder="Search nodes..."
+              className="w-full bg-secondary border-0 rounded-md pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
         </div>
-        <div className="p-2 space-y-3">
-          {nodeLibrary.map((group) => (
+        <div className="p-2 space-y-1">
+          {filteredLibrary.map((group) => (
             <div key={group.category}>
-              <div className="flex items-center gap-1.5 px-2 py-1">
+              <button
+                onClick={() => toggleCategory(group.category)}
+                className="flex items-center gap-1.5 px-2 py-1.5 w-full hover:bg-accent/30 rounded transition-colors"
+              >
+                <ChevronRight className={`w-3 h-3 text-muted-foreground transition-transform ${expandedCategories.has(group.category) ? "rotate-90" : ""}`} />
                 <group.icon className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   {group.category}
                 </span>
-              </div>
-              <div className="space-y-0.5">
-                {group.nodes.map((node) => {
-                  const Icon = nodeIconMap[node.icon];
-                  return (
-                    <div
-                      key={node.type}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm text-foreground hover:bg-accent cursor-grab transition-colors"
-                      draggable
-                    >
-                      <Icon className="w-4 h-4 text-primary" />
-                      <span className="text-xs">{node.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
+                <span className="ml-auto text-[10px] text-muted-foreground/50">{group.nodes.length}</span>
+              </button>
+              {expandedCategories.has(group.category) && (
+                <div className="space-y-0.5 ml-3">
+                  {group.nodes.map((node) => {
+                    const Icon = nodeIconMap[node.icon];
+                    return (
+                      <div
+                        key={node.type}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm text-foreground hover:bg-accent cursor-grab transition-colors"
+                        draggable
+                      >
+                        <Icon className="w-3.5 h-3.5 text-primary" />
+                        <span className="text-xs">{node.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -237,7 +201,7 @@ export default function WorkflowStudio() {
       <div className="flex-1 relative flex flex-col">
         {/* Toolbar */}
         <div className="h-10 border-b border-border bg-card/60 backdrop-blur flex items-center px-4 gap-2">
-          <span className="text-sm font-semibold text-foreground">CI/CD Pipeline — api-gateway</span>
+          <span className="text-sm font-semibold text-foreground">DevOps Pipeline — Full Lifecycle</span>
           <div className="flex-1" />
           <button className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-success/15 text-success text-xs font-medium hover:bg-success/25 transition-colors">
             <Play className="w-3.5 h-3.5" /> Run Pipeline
@@ -256,7 +220,7 @@ export default function WorkflowStudio() {
           onMouseLeave={handleMouseUp}
         >
           {/* SVG connections */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ minWidth: 1400, minHeight: 500 }}>
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ minWidth: 2500, minHeight: 500 }}>
             <defs>
               <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
                 <polygon points="0 0, 8 3, 0 6" fill="hsl(187, 80%, 48%)" opacity="0.6" />
@@ -284,7 +248,7 @@ export default function WorkflowStudio() {
           </svg>
 
           {/* Nodes */}
-          <div className="relative" style={{ minWidth: 1400, minHeight: 500 }}>
+          <div className="relative" style={{ minWidth: 2500, minHeight: 500 }}>
             {nodes.map((node) => {
               const Icon = nodeIconMap[node.icon];
               return (
@@ -303,7 +267,7 @@ export default function WorkflowStudio() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-semibold text-foreground truncate">{node.label}</p>
-                      <p className="text-[10px] text-muted-foreground">{node.category}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{node.category}</p>
                     </div>
                     <span className={`status-dot ml-auto shrink-0 ${
                       node.status === "success" ? "bg-success" : node.status === "running" ? "bg-warning animate-pulse" : node.status === "failed" ? "bg-destructive" : "bg-muted-foreground/30"
@@ -376,12 +340,8 @@ export default function WorkflowStudio() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">Repository URL</label>
-                  <input className="w-full bg-secondary border-0 rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="https://github.com/org/repo" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">Branch</label>
-                  <input className="w-full bg-secondary border-0 rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="main" />
+                  <label className="text-xs font-medium text-muted-foreground">Configuration URL</label>
+                  <input className="w-full bg-secondary border-0 rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="https://..." />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Timeout (seconds)</label>
@@ -391,14 +351,14 @@ export default function WorkflowStudio() {
             )}
             {configTab === "logs" && (
               <div className="font-mono text-xs space-y-1.5 bg-background/50 rounded-lg p-3 max-h-80 overflow-y-auto">
-                <p className="text-success">[12:34:01] ✓ Connected to repository</p>
-                <p className="text-success">[12:34:02] ✓ Fetched latest commit: a3f2c1d</p>
-                <p className="text-info">[12:34:03] ℹ Starting build process...</p>
-                <p className="text-muted-foreground">[12:34:05] Installing dependencies...</p>
-                <p className="text-muted-foreground">[12:34:12] Running tests...</p>
-                <p className="text-success">[12:34:18] ✓ All 47 tests passed</p>
-                <p className="text-warning">[12:34:19] ⚠ Build artifact size: 128MB</p>
-                <p className="text-success">[12:34:20] ✓ Build complete</p>
+                <p className="text-success">[12:34:01] ✓ Connected to {selectedNode.label}</p>
+                <p className="text-success">[12:34:02] ✓ Configuration loaded</p>
+                <p className="text-info">[12:34:03] ℹ Starting execution...</p>
+                <p className="text-muted-foreground">[12:34:05] Processing pipeline stage...</p>
+                <p className="text-muted-foreground">[12:34:12] Running checks...</p>
+                <p className="text-success">[12:34:18] ✓ All checks passed</p>
+                <p className="text-warning">[12:34:19] ⚠ Minor warnings detected</p>
+                <p className="text-success">[12:34:20] ✓ Stage complete</p>
               </div>
             )}
             {configTab === "metrics" && (
