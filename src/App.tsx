@@ -10,6 +10,7 @@ import Applications from "./pages/Applications";
 import Monitoring from "./pages/Monitoring";
 import Security from "./pages/Security";
 import Infrastructure from "./pages/Infrastructure";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
