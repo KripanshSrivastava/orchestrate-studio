@@ -23,8 +23,8 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
   <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground mb-4">{children}</h2>
 );
 
-const SectionDesc = ({ children }: { children: React.ReactNode }) => (
-  <p className="text-muted-foreground max-w-2xl text-base leading-relaxed">{children}</p>
+const SectionDesc = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
+  <p className={`text-muted-foreground max-w-2xl text-base leading-relaxed ${className}`}>{children}</p>
 );
 
 /* ------------------------------------------------------------------ */
