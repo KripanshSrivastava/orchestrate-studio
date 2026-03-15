@@ -12,6 +12,7 @@ import Monitoring from "./pages/Monitoring";
 import Security from "./pages/Security";
 import Infrastructure from "./pages/Infrastructure";
 import Settings from "./pages/Settings";
+import LoginPage from "./pages/LoginPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
           <Route element={<AppLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/workflows" element={<WorkflowStudio />} />
