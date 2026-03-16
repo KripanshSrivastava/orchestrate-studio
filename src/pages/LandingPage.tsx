@@ -119,7 +119,7 @@ export default function LandingPage() {
             <a href="#architecture" className="hover:text-foreground transition-colors">Architecture</a>
             <a href="#security" className="hover:text-foreground transition-colors">Security</a>
           </div>
-          <Button size="sm" onClick={() => navigate("/dashboard")} className="gap-1.5">
+          <Button size="sm" onClick={() => navigate("/login")} className="gap-1.5">
             Launch Platform <ArrowRight className="w-3.5 h-3.5" />
           </Button>
         </div>
@@ -138,7 +138,7 @@ export default function LandingPage() {
             Visually orchestrate the entire DevOps lifecycle — from code push to production monitoring — in a single unified platform.
           </p>
           <div className="flex items-center justify-center gap-3 mb-16">
-            <Button size="lg" onClick={() => navigate("/dashboard")} className="gap-2 px-6">
+            <Button size="lg" onClick={() => navigate("/login")} className="gap-2 px-6">
               Launch Platform <ArrowRight className="w-4 h-4" />
             </Button>
             <Button size="lg" variant="outline" onClick={() => {
