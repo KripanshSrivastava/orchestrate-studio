@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import keycloak from "@/auth/keycloak";
+import { validateEmail, validatePassword, getPasswordStrength, getStrengthLabel, getStrengthColor } from "@/lib/validations";
+import useSignup from "@/hooks/useSignup";
 
 const floatingNodes = [
   { icon: GitBranch, label: "GitHub", x: "6%", y: "15%", delay: 0 },
@@ -35,14 +37,39 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordStrength, setPasswordStrength] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const { signup: handleSignupSubmit, isLoading: isSignupLoading, error: signupError, setError: setSignupError } = useSignup();
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 50);
     return () => clearTimeout(t);
   }, []);
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newPassword = e.target.value;
+    setPassword(newPassword);
+    setPasswordStrength(getPasswordStrength(newPassword));
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    await handleSignupSubmit({
+      firstName,
+      lastName,
+      email,
+      password,
+      confirmPassword,
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,35 +237,74 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {signupError && (
+            <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+              {signupError}
+            </div>
+          )}
+
+          <form onSubmit={isSignUp ? handleSignup : handleSubmit} className="space-y-4">
             {isSignUp && (
-              <div className="space-y-2" style={{ animation: "fieldSlideIn 0.4s ease-out" }}>
-                <Label htmlFor="name" className="text-xs font-medium text-muted-foreground">Full name</Label>
+              <>
+                <div className="space-y-2" style={{ animation: "fieldSlideIn 0.4s ease-out" }}>
+                  <Label htmlFor="firstName" className="text-xs font-medium text-muted-foreground">
+                    First Name
+                  </Label>
+                  <Input
+                    id="firstName"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="John"
+                    className="bg-background/50 border-border/60 focus:border-primary/50 h-10 transition-all duration-300 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
+                  />
+                </div>
+
+                <div className="space-y-2" style={{ animation: "fieldSlideIn 0.4s ease-out 0.1s backwards" }}>
+                  <Label htmlFor="lastName" className="text-xs font-medium text-muted-foreground">
+                    Last Name
+                  </Label>
+                  <Input
+                    id="lastName"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Doe"
+                    className="bg-background/50 border-border/60 focus:border-primary/50 h-10 transition-all duration-300 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
+                  />
+                </div>
+              </>
+            )}
+
+            {isSignUp && (
+              <div className="space-y-2" style={{ animation: "fieldSlideIn 0.4s ease-out 0.2s backwards" }}>
+                <Label htmlFor="email-signup" className="text-xs font-medium text-muted-foreground">Email</Label>
                 <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Jane Doe"
+                  id="email-signup"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@company.com"
                   className="bg-background/50 border-border/60 focus:border-primary/50 h-10 transition-all duration-300 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
                 />
               </div>
             )}
 
-            <div className="space-y-2" style={{
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? "translateX(0)" : "translateX(-15px)",
-              transition: "all 0.5s ease-out 0.5s",
-            }}>
-              <Label htmlFor="email" className="text-xs font-medium text-muted-foreground">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@company.com"
-                className="bg-background/50 border-border/60 focus:border-primary/50 h-10 transition-all duration-300 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
-              />
-            </div>
+            {!isSignUp && (
+              <div className="space-y-2" style={{
+                opacity: mounted ? 1 : 0,
+                transform: mounted ? "translateX(0)" : "translateX(-15px)",
+                transition: "all 0.5s ease-out 0.5s",
+              }}>
+                <Label htmlFor="email" className="text-xs font-medium text-muted-foreground">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  className="bg-background/50 border-border/60 focus:border-primary/50 h-10 transition-all duration-300 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
+                />
+              </div>
+            )}
 
             <div className="space-y-2" style={{
               opacity: mounted ? 1 : 0,
@@ -251,7 +317,7 @@ export default function LoginPage() {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={handlePasswordChange}
                   placeholder="••••••••"
                   className="bg-background/50 border-border/60 focus:border-primary/50 h-10 pr-10 transition-all duration-300 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
                 />
@@ -263,7 +329,50 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+
+              {isSignUp && password && (
+                <div className="mt-2 space-y-1">
+                  <div className="flex gap-1">
+                    {[...Array(4)].map((_, i) => (
+                      <div
+                        key={i}
+                        className={`flex-1 h-1 rounded-full transition-colors ${
+                          i < passwordStrength ? getStrengthColor(passwordStrength) : "bg-border/30"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Strength: <span className="font-medium">{getStrengthLabel(passwordStrength)}</span>
+                  </p>
+                  {passwordStrength < 4 && (
+                    <ul className="text-xs text-muted-foreground space-y-1 mt-2">
+                      {validatePassword(password).errors.map((err, i) => (
+                        <li key={i} className="flex items-center gap-1">
+                          <span className="text-red-500">•</span> {err}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
+
+            {isSignUp && (
+              <div className="space-y-2" style={{ animation: "fieldSlideIn 0.4s ease-out 0.3s backwards" }}>
+                <Label htmlFor="confirmPassword" className="text-xs font-medium text-muted-foreground">
+                  Confirm Password
+                </Label>
+                <Input
+                  id="confirmPassword"
+                  type={showPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="bg-background/50 border-border/60 focus:border-primary/50 h-10 transition-all duration-300 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
+                />
+              </div>
+            )}
 
             {!isSignUp && (
               <div className="flex justify-end" style={{
@@ -282,11 +391,17 @@ export default function LoginPage() {
               <Button 
                 type="submit" 
                 className="w-full h-10 gap-2 mt-2 group relative overflow-hidden"
-                disabled={isLoading}
+                disabled={isLoading || isSignupLoading}
               >
                 <span className="relative z-10 flex items-center gap-2">
-                  {isLoading ? "Authenticating..." : (isSignUp ? "Create account" : "Sign in")}
-                  {!isLoading && <ArrowRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-1" />}
+                  {isLoading || isSignupLoading ? (
+                    <>Authenticating...</>
+                  ) : (
+                    <>
+                      {isSignUp ? "Create account" : "Sign in"}
+                      {!isLoading && !isSignupLoading && <ArrowRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-1" />}
+                    </>
+                  )}
                 </span>
                 <div className="absolute inset-0 bg-gradient-to-r from-primary via-primary to-info opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               </Button>
