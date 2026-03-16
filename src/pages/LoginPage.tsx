@@ -4,6 +4,7 @@ import { Zap, ArrowRight, Eye, EyeOff, GitBranch, Play, Shield, Cloud, Activity,
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import keycloak from "@/auth/keycloak";
 
 const floatingNodes = [
   { icon: GitBranch, label: "GitHub", x: "6%", y: "15%", delay: 0 },
@@ -18,7 +19,6 @@ const floatingNodes = [
   { icon: FileText, label: "Logs", x: "75%", y: "90%", delay: 0.8 },
 ];
 
-// Particle dots for ambient background
 const particles = Array.from({ length: 30 }, (_, i) => ({
   id: i,
   x: Math.random() * 100,
@@ -36,15 +36,61 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [mounted, setMounted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 50);
     return () => clearTimeout(t);
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    navigate("/dashboard");
+    setError("");
+    setIsLoading(true);
+
+    try {
+      // Call Keycloak token endpoint to authenticate
+      const tokenResponse = await fetch(
+        `${import.meta.env.VITE_KEYCLOAK_URL}/realms/${import.meta.env.VITE_KEYCLOAK_REALM}/protocol/openid-connect/token`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: import.meta.env.VITE_KEYCLOAK_CLIENT_ID,
+            grant_type: "password",
+            username: email,
+            password: password,
+          }),
+        }
+      );
+
+      if (!tokenResponse.ok) {
+        const errorData = await tokenResponse.json();
+        throw new Error(errorData.error_description || "Invalid credentials");
+      }
+
+      const tokenData = await tokenResponse.json();
+
+      // Store token in Keycloak JS instance
+      keycloak.token = tokenData.access_token;
+      keycloak.refreshToken = tokenData.refresh_token;
+      keycloak.tokenParsed = JSON.parse(
+        atob(tokenData.access_token.split(".")[1])
+      );
+      keycloak.authenticated = true;
+
+      console.log("✅ Login successful, redirecting to dashboard...");
+
+      // Navigate to dashboard
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Login failed";
+      console.error("❌ Login error:", errorMessage);
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -158,6 +204,12 @@ export default function LoginPage() {
             </p>
           </div>
 
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignUp && (
               <div className="space-y-2" style={{ animation: "fieldSlideIn 0.4s ease-out" }}>
@@ -227,10 +279,14 @@ export default function LoginPage() {
               transform: mounted ? "translateY(0)" : "translateY(10px)",
               transition: "all 0.5s ease-out 0.75s",
             }}>
-              <Button type="submit" className="w-full h-10 gap-2 mt-2 group relative overflow-hidden">
+              <Button 
+                type="submit" 
+                className="w-full h-10 gap-2 mt-2 group relative overflow-hidden"
+                disabled={isLoading}
+              >
                 <span className="relative z-10 flex items-center gap-2">
-                  {isSignUp ? "Create account" : "Sign in"}
-                  <ArrowRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-1" />
+                  {isLoading ? "Authenticating..." : (isSignUp ? "Create account" : "Sign in")}
+                  {!isLoading && <ArrowRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-1" />}
                 </span>
                 <div className="absolute inset-0 bg-gradient-to-r from-primary via-primary to-info opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               </Button>

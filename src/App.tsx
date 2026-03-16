@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
+import { ProtectedRoute } from "./auth/ProtectedRoute";
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
 import WorkflowStudio from "./pages/WorkflowStudio";
@@ -26,21 +27,26 @@ const App = () => (
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route element={<AppLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/workflows" element={<WorkflowStudio />} />
-            <Route path="/applications" element={<Applications />} />
-            <Route path="/monitoring" element={<Monitoring />} />
-            <Route path="/security" element={<Security />} />
-            <Route path="/infrastructure" element={<Infrastructure />} />
-            {/* Placeholder routes */}
-            <Route path="/pipelines" element={<Dashboard />} />
-            <Route path="/deployments" element={<Dashboard />} />
-            <Route path="/metrics" element={<Monitoring />} />
-            <Route path="/logs" element={<Monitoring />} />
-            <Route path="/alerts" element={<Monitoring />} />
-            <Route path="/settings" element={<Settings />} />
+          
+          {/* Protected Routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppLayout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/workflows" element={<WorkflowStudio />} />
+              <Route path="/applications" element={<Applications />} />
+              <Route path="/monitoring" element={<Monitoring />} />
+              <Route path="/security" element={<Security />} />
+              <Route path="/infrastructure" element={<Infrastructure />} />
+              {/* Placeholder routes */}
+              <Route path="/pipelines" element={<Dashboard />} />
+              <Route path="/deployments" element={<Dashboard />} />
+              <Route path="/metrics" element={<Monitoring />} />
+              <Route path="/logs" element={<Monitoring />} />
+              <Route path="/alerts" element={<Monitoring />} />
+              <Route path="/settings" element={<Settings />} />
+            </Route>
           </Route>
+          
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

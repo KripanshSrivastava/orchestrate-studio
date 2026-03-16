@@ -19,34 +19,25 @@ interface UseAuthReturn {
 
 /**
  * Hook to access Keycloak authentication state
+ * USE THIS to check if user is authenticated anywhere in your app
  */
 export const useAuth = (): UseAuthReturn => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(!!keycloak.authenticated);
 
   useEffect(() => {
-    keycloak
-      .init({
-        onLoad: 'check-sso',
-        silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
-        pkceMethod: 'S256',
-      })
-      .then((authenticated) => {
-        setIsAuthenticated(authenticated);
-        setIsLoading(false);
-        console.log(`User is ${authenticated ? 'authenticated' : 'not authenticated'}`);
-      })
-      .catch((error) => {
-        console.error('Failed to initialize Keycloak:', error);
-        setIsLoading(false);
-      });
-  }, []);
+    // Update state when keycloak.authenticated changes
+    setIsAuthenticated(!!keycloak.authenticated && !!keycloak.token);
+    console.log(`🔔 useAuth: isAuthenticated = ${isAuthenticated}, token = ${keycloak.token ? 'present' : 'absent'}`);
+  }, [keycloak.authenticated, keycloak.token]);
 
   const logout = () => {
-    keycloak.logout();
+    console.log('🚪 Logout initiated');
+    keycloak.logout({ redirectUri: `${window.location.origin}/login` });
   };
 
   const login = () => {
+    console.log('🔐 Login initiated');
     keycloak.login();
   };
 
