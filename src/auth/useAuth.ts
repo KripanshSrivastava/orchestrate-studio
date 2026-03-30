@@ -23,17 +23,25 @@ interface UseAuthReturn {
  */
 export const useAuth = (): UseAuthReturn => {
   const [isLoading, setIsLoading] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(!!keycloak.authenticated);
+  const [isAuthenticated, setIsAuthenticated] = useState(Boolean(keycloak.authenticated && keycloak.token));
 
   useEffect(() => {
     // Update state when keycloak.authenticated changes
-    setIsAuthenticated(!!keycloak.authenticated && !!keycloak.token);
+    setIsAuthenticated(Boolean(keycloak.authenticated && keycloak.token));
     console.log(`🔔 useAuth: isAuthenticated = ${isAuthenticated}, token = ${keycloak.token ? 'present' : 'absent'}`);
   }, [keycloak.authenticated, keycloak.token]);
 
   const logout = () => {
     console.log('🚪 Logout initiated');
-    keycloak.logout({ redirectUri: `${window.location.origin}/login` });
+    keycloak.authenticated = false;
+    keycloak.token = undefined;
+    keycloak.refreshToken = undefined;
+    keycloak.tokenParsed = undefined;
+    try {
+      keycloak.logout({ redirectUri: `${window.location.origin}/login` });
+    } catch {
+      // No active IdP session; local auth state has already been cleared.
+    }
   };
 
   const login = () => {

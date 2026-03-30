@@ -7,7 +7,7 @@ import keycloak from './keycloak';
  * Renders Outlet if authenticated
  */
 export const ProtectedRoute = () => {
-  const isAuthenticated = keycloak.authenticated && keycloak.token;
+  const isAuthenticated = Boolean(keycloak.authenticated && keycloak.token);
 
   if (!isAuthenticated) {
     console.log('🔒 ProtectedRoute: User not authenticated, redirecting to /login');

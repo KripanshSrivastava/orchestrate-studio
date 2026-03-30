@@ -17,10 +17,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   useEffect(() => {
     const initKeycloak = async () => {
       try {
-        // Use 'check-sso' to check existing session without redirecting to login
+        // Initialize keycloak without automatic SSO re-login.
         const authenticated = await keycloak.init({
-          onLoad: 'check-sso',
-          silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
           // Disable login iframe checks to avoid third-party cookie iframe errors in modern browsers.
           checkLoginIframe: false,
           // Removed PKCE (pkceMethod: 'S256') due to Web Crypto API availability issues
@@ -33,7 +31,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         // Setup token refresh
         keycloak.onTokenExpired = () => {
           console.log('⏰ Token expired, logging out...');
-          keycloak.logout();
+          keycloak.authenticated = false;
+          keycloak.token = undefined;
+          keycloak.refreshToken = undefined;
+          keycloak.tokenParsed = undefined;
         };
 
         // Setup token ready

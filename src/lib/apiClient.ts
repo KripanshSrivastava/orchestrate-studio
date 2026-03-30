@@ -17,7 +17,15 @@ export const apiCall = async (
       }
     } catch (error) {
       console.error('Failed to refresh token:', error);
-      keycloak.logout();
+      keycloak.authenticated = false;
+      keycloak.token = undefined;
+      keycloak.refreshToken = undefined;
+      keycloak.tokenParsed = undefined;
+      try {
+        keycloak.logout();
+      } catch {
+        // If no active IdP browser session exists, local auth state is already cleared.
+      }
     }
   }
 
