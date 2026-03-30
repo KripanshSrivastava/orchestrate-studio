@@ -117,8 +117,21 @@ router.post('/signup', async (req: Request, res: Response) => {
       console.warn('⚠️ Failed to assign default role:', roleError);
     }
 
+    // Wait a brief moment for Keycloak to propagate the new user
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     // Get token for the newly created user (using username, not email)
-    const tokenData = await keycloakService.getTokenForUser(username, password);
+    let tokenData;
+    try {
+      tokenData = await keycloakService.getTokenForUser(username, password);
+    } catch (tokenError) {
+      console.warn('⚠️ Auto-login failed after signup:', tokenError);
+      return res.status(201).json({
+        success: true,
+        message: 'Account created successfully. Please login with your credentials.',
+        autoLogin: false,
+      });
+    }
 
     // Decode token to get user info
     let decodedToken;
@@ -161,12 +174,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       });
     }
 
-    if (errorMessage.includes('Failed to get user token')) {
-      return res.status(400).json({
-        success: false,
-        error: 'User created but could not login automatically. Please try signing in.',
-      });
-    }
+    // Auto-login failure is now handled inside try block above
 
     return res.status(500).json({
       success: false,

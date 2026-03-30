@@ -21,6 +21,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const authenticated = await keycloak.init({
           onLoad: 'check-sso',
           silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
+          // Disable login iframe checks to avoid third-party cookie iframe errors in modern browsers.
+          checkLoginIframe: false,
           // Removed PKCE (pkceMethod: 'S256') due to Web Crypto API availability issues
         });
 

@@ -1,6 +1,6 @@
 // Keycloak Configuration
 export const KEYCLOAK_CONFIG = {
-  url: process.env.KEYCLOAK_URL || 'http://localhost:8080',
+  url: process.env.KEYCLOAK_URL || 'http://localhost:8081',
   realm: process.env.KEYCLOAK_REALM || 'idp',
   clientId: process.env.KEYCLOAK_CLIENT_ID || 'idp-backend',
 };

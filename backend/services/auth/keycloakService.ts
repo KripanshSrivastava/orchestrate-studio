@@ -181,8 +181,20 @@ export class KeycloakService {
       );
 
       if (!response.ok) {
-        const error = await response.json() as any;
-        throw new Error(error.error_description || 'Failed to get user token');
+        let errorData: any;
+        try {
+          const errorText = await response.text();
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            errorData = { error: 'Unknown', error_description: errorText };
+          }
+        } catch {
+          errorData = { error: 'Unknown' };
+        }
+        
+        console.error('❌ Failed to get user token:', errorData);
+        throw new Error(errorData.error_description || errorData.error || 'Failed to get user token');
       }
 
       const tokenData = await response.json() as TokenResponse;

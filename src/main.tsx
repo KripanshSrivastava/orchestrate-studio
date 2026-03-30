@@ -1,10 +1,13 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import AuthProvider from "./components/AuthProvider.tsx";
+import { ThemeProvider } from "./components/theme-provider.tsx";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
-  <AuthProvider>
-    <App />
-  </AuthProvider>
+  <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} storageKey="idp-theme">
+    <AuthProvider>
+      <App />
+    </AuthProvider>
+  </ThemeProvider>
 );
