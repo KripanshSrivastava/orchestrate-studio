@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { verifyToken } from '../api/middleware/authMiddleware';
 import authRoutes from '../api/routes/authRoutes';
+import integrationRoutes from '../api/routes/integrationRoutes';
 
 dotenv.config();
 
@@ -19,6 +20,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/integrations', verifyToken, integrationRoutes);
 
 /**
  * Health check endpoint (no auth required)

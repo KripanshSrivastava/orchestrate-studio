@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Play,
   Square,
@@ -13,6 +14,7 @@ import {
   Search,
 } from "lucide-react";
 import { nodeLibrary, nodeIconMap } from "@/data/nodeLibrary";
+import useIntegrations from "@/hooks/useIntegrations";
 
 // Node type definitions
 interface WorkflowNodeData {
@@ -82,6 +84,7 @@ const initialConnections: Connection[] = [
 ];
 
 export default function WorkflowStudio() {
+  const navigate = useNavigate();
   const [nodes, setNodes] = useState<WorkflowNodeData[]>(initialNodes);
   const [connections] = useState<Connection[]>(initialConnections);
   const [selectedNode, setSelectedNode] = useState<WorkflowNodeData | null>(null);
@@ -91,6 +94,7 @@ export default function WorkflowStudio() {
   const [librarySearch, setLibrarySearch] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(nodeLibrary.map(c => c.category)));
   const canvasRef = useRef<HTMLDivElement>(null);
+  const { getNodeIntegration } = useIntegrations();
 
   const toggleCategory = (cat: string) => {
     setExpandedCategories(prev => {
@@ -347,6 +351,43 @@ export default function WorkflowStudio() {
                   <label className="text-xs font-medium text-muted-foreground">Timeout (seconds)</label>
                   <input type="number" className="w-full bg-secondary border-0 rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="300" />
                 </div>
+
+                {(() => {
+                  const integration = getNodeIntegration(selectedNode.type);
+                  if (!integration) {
+                    return null;
+                  }
+
+                  const configuredFields = integration.definition.fields.filter(
+                    (field) => (integration.state.values[field.key] || "").trim().length > 0
+                  ).length;
+
+                  return (
+                    <div className="rounded-md border border-border/60 bg-background/40 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-foreground">Integration</p>
+                        <span
+                          className={`text-[11px] font-medium ${
+                            integration.state.connected ? "text-success" : "text-warning"
+                          }`}
+                        >
+                          {integration.state.connected ? "Connected" : "Not Connected"}
+                        </span>
+                      </div>
+                      <p className="text-sm text-foreground">{integration.definition.name}</p>
+                      <p className="text-xs text-muted-foreground">{integration.definition.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Configured fields: {configuredFields}/{integration.definition.fields.length}
+                      </p>
+                      <button
+                        onClick={() => navigate("/settings")}
+                        className="w-full mt-1 px-3 py-2 rounded-md bg-secondary text-xs text-foreground hover:bg-accent transition-colors"
+                      >
+                        Open Settings to Configure
+                      </button>
+                    </div>
+                  );
+                })()}
               </>
             )}
             {configTab === "logs" && (

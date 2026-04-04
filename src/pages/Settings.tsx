@@ -12,7 +12,10 @@ import {
   Check,
   ToggleLeft,
   ToggleRight,
+  Clock3,
 } from "lucide-react";
+import useIntegrations from "@/hooks/useIntegrations";
+import { IntegrationDefinition } from "@/lib/integrationCatalog";
 
 type Section = "integrations" | "secrets" | "notifications" | "environments" | "ai";
 
@@ -22,36 +25,6 @@ const sections = [
   { key: "notifications" as const, label: "Notifications", icon: Bell },
   { key: "environments" as const, label: "Environment Settings", icon: Globe },
   { key: "ai" as const, label: "AI Insights", icon: Brain },
-];
-
-const integrations = {
-  "CI Tools": [
-    { name: "Jenkins", connected: true },
-    { name: "GitHub Actions", connected: true },
-    { name: "GitLab CI", connected: false },
-    { name: "CircleCI", connected: false },
-    { name: "Azure Pipelines", connected: false },
-  ],
-  "Git Providers": [
-    { name: "GitHub", connected: true },
-    { name: "GitLab", connected: false },
-    { name: "Bitbucket", connected: false },
-    { name: "Azure DevOps", connected: false },
-  ],
-  "Container Registries": [
-    { name: "Docker Hub", connected: true },
-    { name: "AWS ECR", connected: false },
-    { name: "Azure ACR", connected: false },
-    { name: "GCP Artifact Registry", connected: false },
-    { name: "Harbor", connected: false },
-  ],
-};
-
-const secretProviders = [
-  { name: "HashiCorp Vault", status: "connected", secrets: 24 },
-  { name: "Kubernetes Secrets", status: "connected", secrets: 18 },
-  { name: "AWS Secrets Manager", status: "disconnected", secrets: 0 },
-  { name: "Azure Key Vault", status: "disconnected", secrets: 0 },
 ];
 
 const notificationChannels = [
@@ -75,6 +48,33 @@ const aiFeatures = [
 
 export default function Settings() {
   const [activeSection, setActiveSection] = useState<Section>("integrations");
+  const { groupedIntegrations, getState, connectIntegration, disconnectIntegration, isLoading, error, secretProviders } = useIntegrations();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftValues, setDraftValues] = useState<Record<string, string>>({});
+  const [actionError, setActionError] = useState<string>("");
+
+  const startEditing = (integration: IntegrationDefinition) => {
+    const integrationState = getState(integration.id);
+    setEditingId(integration.id);
+    setDraftValues(integrationState.values || {});
+  };
+
+  const saveEditing = async (integration: IntegrationDefinition) => {
+    const values = integration.fields.reduce<Record<string, string>>((acc, field) => {
+      acc[field.key] = (draftValues[field.key] || "").trim();
+      return acc;
+    }, {});
+
+    setActionError("");
+
+    try {
+      await connectIntegration(integration.id, values);
+      setEditingId(null);
+      setDraftValues({});
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to save integration");
+    }
+  };
 
   return (
     <div className="p-6 animate-fade-in">
@@ -107,9 +107,27 @@ export default function Settings() {
 
         {/* Content */}
         <div className="flex-1 space-y-6">
+          {error && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
+          {actionError && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {actionError}
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="rounded-md border border-border/60 bg-card/50 px-3 py-2 text-sm text-muted-foreground">
+              Loading secure integration settings...
+            </div>
+          )}
+
           {activeSection === "integrations" && (
             <>
-              {Object.entries(integrations).map(([group, items]) => (
+              {Object.entries(groupedIntegrations).map(([group, items]) => (
                 <div key={group} className="glass-panel p-4">
                   <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                     {group === "CI Tools" ? <Play className="w-4 h-4 text-primary" /> :
@@ -118,20 +136,94 @@ export default function Settings() {
                     {group}
                   </h3>
                   <div className="space-y-2">
-                    {items.map((item) => (
-                      <div key={item.name} className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-accent/30 transition-colors">
-                        <span className="text-sm text-foreground">{item.name}</span>
-                        {item.connected ? (
-                          <span className="flex items-center gap-1 text-xs text-success">
-                            <Check className="w-3.5 h-3.5" /> Connected
-                          </span>
-                        ) : (
-                          <button className="px-3 py-1 rounded-md bg-secondary text-xs text-foreground hover:bg-accent transition-colors">
-                            Connect
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                    {items.map((integration) => {
+                      const integrationState = getState(integration.id);
+                      const isEditing = editingId === integration.id;
+
+                      return (
+                        <div key={integration.id} className="rounded-md border border-border/60 bg-background/20 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm text-foreground">{integration.name}</p>
+                              <p className="text-xs text-muted-foreground">{integration.description}</p>
+                            </div>
+                            {integrationState.connected ? (
+                              <div className="flex items-center gap-2">
+                                <span className="flex items-center gap-1 text-xs text-success">
+                                  <Check className="w-3.5 h-3.5" /> Connected
+                                </span>
+                                <button
+                                  onClick={() => startEditing(integration)}
+                                  className="px-2.5 py-1 rounded-md bg-secondary text-xs text-foreground hover:bg-accent transition-colors"
+                                >
+                                  Configure
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    setActionError("");
+                                    try {
+                                      await disconnectIntegration(integration.id);
+                                    } catch (err) {
+                                      setActionError(err instanceof Error ? err.message : "Failed to disconnect integration");
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 rounded-md bg-destructive/15 text-xs text-destructive hover:bg-destructive/25 transition-colors"
+                                >
+                                  Disconnect
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => startEditing(integration)}
+                                className="px-3 py-1 rounded-md bg-secondary text-xs text-foreground hover:bg-accent transition-colors"
+                              >
+                                Connect
+                              </button>
+                            )}
+                          </div>
+
+                          {isEditing && (
+                            <div className="mt-3 pt-3 border-t border-border/60 space-y-2">
+                              {integration.fields.map((field) => (
+                                <div key={field.key}>
+                                  <label className="text-xs font-medium text-muted-foreground">{field.label}</label>
+                                  <input
+                                    type={field.type || "text"}
+                                    value={draftValues[field.key] || ""}
+                                    onChange={(e) =>
+                                      setDraftValues((prev) => ({
+                                        ...prev,
+                                        [field.key]: e.target.value,
+                                      }))
+                                    }
+                                    placeholder={field.placeholder}
+                                    className="w-full mt-1 bg-secondary border-0 rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                  />
+                                </div>
+                              ))}
+
+                              <div className="flex items-center gap-2 pt-1">
+                                <button
+                                  onClick={() => saveEditing(integration)}
+                                  className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity"
+                                >
+                                  Save Integration
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setEditingId(null);
+                                    setDraftValues({});
+                                  }}
+                                  className="px-3 py-1.5 rounded-md bg-secondary text-xs text-foreground hover:bg-accent transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -143,24 +235,30 @@ export default function Settings() {
               <h3 className="text-sm font-semibold text-foreground mb-3">Secret Providers</h3>
               <div className="space-y-3">
                 {secretProviders.map((p) => (
-                  <div key={p.name} className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-accent/30 transition-colors">
+                  <div key={p.id} className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-accent/30 transition-colors border border-border/50">
                     <div>
                       <p className="text-sm text-foreground">{p.name}</p>
-                      {p.status === "connected" && (
-                        <p className="text-xs text-muted-foreground">{p.secrets} secrets synced</p>
-                      )}
+                      <p className="text-xs text-muted-foreground">{p.details}</p>
+                      <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                        <Clock3 className="w-3 h-3" />
+                        {p.updatedAt ? `Updated ${new Date(p.updatedAt).toLocaleString()}` : "No updates yet"}
+                      </div>
                     </div>
-                    {p.status === "connected" ? (
-                      <span className="flex items-center gap-1 text-xs text-success">
-                        <Check className="w-3.5 h-3.5" /> Connected
+
+                    <div className="text-right">
+                      <span className={`inline-flex items-center gap-1 text-xs ${p.connected ? "text-success" : "text-warning"}`}>
+                        <Check className="w-3.5 h-3.5" /> {p.connected ? "Connected" : "Not Connected"}
                       </span>
-                    ) : (
-                      <button className="px-3 py-1 rounded-md bg-secondary text-xs text-foreground hover:bg-accent transition-colors">
-                        Connect
-                      </button>
-                    )}
+                      <p className="text-[11px] text-muted-foreground mt-1 uppercase tracking-wider">{p.mode}</p>
+                    </div>
                   </div>
                 ))}
+
+                {secretProviders.length === 0 && (
+                  <div className="text-xs text-muted-foreground px-1">
+                    No provider data available. Save an integration to initialize provider status.
+                  </div>
+                )}
               </div>
             </div>
           )}
