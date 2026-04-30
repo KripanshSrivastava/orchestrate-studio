@@ -67,6 +67,7 @@ export const hasRole =
   };
 
 /**
+
  * Require authentication
  */
 export const requireAuth = (
