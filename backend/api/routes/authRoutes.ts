@@ -1,7 +1,8 @@
-import { Router, Request, Response } from 'express';
-import { verifyToken, AuthRequest, requireAuth } from '../middleware/authMiddleware';
-import keycloakService from '../../services/auth/keycloakService';
-import { validateSignupData, sanitizeUsername } from '../../utils/validation';
+import { Router, Response } from 'express';
+import { verifyToken, AuthRequest, requireAuth } from '../middleware/authMiddleware.js';
+import keycloakService from '../../services/auth/keycloakService.js';
+import { validateSignupData, sanitizeUsername } from '../../utils/validation.js';
+import { logAuthEvent } from '../../middleware/auditMiddleware.js';
 
 const router = Router();
 
@@ -21,6 +22,10 @@ router.get('/user', verifyToken, (req: AuthRequest, res: Response) => {
  * Verify token is valid
  */
 router.get('/verify', verifyToken, (req: AuthRequest, res: Response) => {
+  if (req.user?.id && req.user?.email && req.traceId) {
+    logAuthEvent(req.user.id, req.user.email, 'LOGIN', req.traceId, 'Token verified successfully');
+  }
+
   res.json({
     success: true,
     message: 'Token is valid',
@@ -32,7 +37,11 @@ router.get('/verify', verifyToken, (req: AuthRequest, res: Response) => {
  * POST /api/auth/logout
  * Logout user (frontend should handle this via Keycloak)
  */
-router.post('/logout', (_req: Request, res: Response) => {
+router.post('/logout', verifyToken, (req: AuthRequest, res: Response) => {
+  if (req.user?.id && req.user?.email && req.traceId) {
+    logAuthEvent(req.user.id, req.user.email, 'LOGOUT', req.traceId, 'User initiated logout');
+  }
+
   res.json({
     success: true,
     message: 'Logged out successfully. Please logout from Keycloak in frontend.',
@@ -59,7 +68,7 @@ router.get('/profile', requireAuth, (req: AuthRequest, res: Response) => {
  * POST /api/auth/signup
  * Create a new user account in Keycloak
  */
-router.post('/signup', async (req: Request, res: Response) => {
+router.post('/signup', async (req: AuthRequest, res: Response) => {
   try {
     const { firstName, lastName, email, password, confirmPassword } = req.body;
 
@@ -117,19 +126,26 @@ router.post('/signup', async (req: Request, res: Response) => {
       console.warn('⚠️ Failed to assign default role:', roleError);
     }
 
-    // Wait a brief moment for Keycloak to propagate the new user
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Get token for the newly created user (using username, not email)
+    // Wait for Keycloak to propagate the new user, then retry auto-login
     let tokenData;
-    try {
-      tokenData = await keycloakService.getTokenForUser(username, password);
-    } catch (tokenError) {
-      console.warn('⚠️ Auto-login failed after signup:', tokenError);
-      return res.status(201).json({
-        success: true,
-        message: 'Account created successfully. Please login with your credentials.',
-        autoLogin: false,
+    let lastTokenError: unknown;
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, attempt * 500));
+
+      try {
+        tokenData = await keycloakService.getTokenForUser(username, password);
+        break;
+      } catch (tokenError) {
+        lastTokenError = tokenError;
+        console.warn(`⚠️ Auto-login attempt ${attempt} failed after signup:`, tokenError);
+      }
+    }
+
+    if (!tokenData) {
+      console.error('❌ Auto-login failed after signup retries:', lastTokenError);
+      return res.status(500).json({
+        success: false,
+        error: 'Account created, but automatic sign-in failed. Please try again.',
       });
     }
 
@@ -147,6 +163,11 @@ router.post('/signup', async (req: Request, res: Response) => {
         success: false,
         error: 'Failed to decode authentication token',
       });
+    }
+
+    if (req.traceId && decodedToken.sub && decodedToken.email) {
+      logAuthEvent(decodedToken.sub, decodedToken.email, 'SIGNUP', req.traceId, 'Account created and auto-login completed');
+      logAuthEvent(decodedToken.sub, decodedToken.email, 'LOGIN', req.traceId, 'Auto-login after signup');
     }
 
     return res.status(201).json({

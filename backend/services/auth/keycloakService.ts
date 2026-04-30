@@ -26,6 +26,7 @@ export class KeycloakService {
   private baseUrl: string;
   private realm: string;
   private clientId: string;
+  private passwordGrantClientId: string;
   private clientSecret: string;
   private adminToken: string | null = null;
   private adminTokenExpiry: number = 0;
@@ -34,6 +35,7 @@ export class KeycloakService {
     this.baseUrl = process.env.KEYCLOAK_URL || 'http://localhost:8081';
     this.realm = process.env.KEYCLOAK_REALM || 'idp';
     this.clientId = process.env.KEYCLOAK_CLIENT_ID || 'idp-backend';
+    this.passwordGrantClientId = process.env.KEYCLOAK_PASSWORD_CLIENT_ID || process.env.KEYCLOAK_FRONTEND_CLIENT_ID || 'idp-frontend';
     this.clientSecret = process.env.KEYCLOAK_CLIENT_SECRET || '';
   }
 
@@ -160,7 +162,7 @@ export class KeycloakService {
   async getTokenForUser(username: string, password: string): Promise<TokenResponse> {
     try {
       const params = new URLSearchParams({
-        client_id: this.clientId,
+        client_id: this.passwordGrantClientId,
         grant_type: 'password',
         username: username,
         password: password,

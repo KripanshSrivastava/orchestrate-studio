@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
-import { AuthRequest } from '../middleware/authMiddleware';
-import secretManagerService from '../../services/secrets/secretManagerService';
+import { AuthRequest } from '../middleware/authMiddleware.js';
+import secretManagerService from '../../services/secrets/secretManagerService.js';
 
 const router = Router();
 

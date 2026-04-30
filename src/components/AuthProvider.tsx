@@ -1,6 +1,39 @@
 import { ReactNode, useEffect, useState } from 'react';
 import keycloak from '@/auth/keycloak';
 
+/**
+ * Verify authenticated user with backend
+ * Audits login event and validates user/org_id setup
+ */
+async function verifyUserWithBackend(token: string): Promise<void> {
+  try {
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/auth/verify`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (response.ok) {
+      const data = await response.json();
+      console.info(`✅ Backend verification successful:`, {
+        user: data.user?.id,
+        email: data.user?.email,
+        org_id: data.user?.org_id,
+      });
+    } else {
+      console.warn(`⚠️ Backend verification returned ${response.status}`);
+    }
+  } catch (error) {
+    console.error('❌ Backend verification failed:', error);
+    // Non-blocking: verification failure doesn't logout user
+  }
+}
+
 interface AuthProviderProps {
   children: ReactNode;
 }
@@ -28,6 +61,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         console.log(`✅ Keycloak initialized. Authenticated: ${authenticated}`);
         console.log(`🔑 Token: ${keycloak.token ? 'Present' : 'Not present'}`);
 
+        // If authenticated, verify user with backend (audits login, validates org_id)
+        if (authenticated && keycloak.token) {
+          await verifyUserWithBackend(keycloak.token);
+        }
+
         // Setup token refresh
         keycloak.onTokenExpired = () => {
           console.log('⏰ Token expired, logging out...');
@@ -40,6 +78,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         // Setup token ready
         keycloak.onAuthSuccess = () => {
           console.log('✅ Auth successful');
+          // Verify user with backend after successful auth (including social logins)
+          if (keycloak.token) {
+            verifyUserWithBackend(keycloak.token);
+          }
         };
 
         // Setup auth error

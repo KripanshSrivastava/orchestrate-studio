@@ -77,15 +77,6 @@ export const useSignup = () => {
 
       const result = await response.json();
 
-      // Handle successful creation but failed auto-login
-      if (result.success && result.autoLogin === false) {
-        console.warn("⚠️ Account created, but auto-login unavailable");
-        setIsLoading(false);
-        alert(result.message || "Account created! Please log in.");
-        window.location.reload(); 
-        return;
-      }
-
       // Store token in Keycloak JS
       if (result.token) {
         keycloak.token = result.token;
@@ -101,7 +92,7 @@ export const useSignup = () => {
           throw new Error("Invalid token received");
         }
       } else {
-        throw new Error("No access token received");
+        throw new Error(result.message || "No access token received");
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Signup failed";
