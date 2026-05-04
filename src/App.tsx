@@ -12,7 +12,12 @@ import Applications from "./pages/Applications";
 import Monitoring from "./pages/Monitoring";
 import Security from "./pages/Security";
 import Infrastructure from "./pages/Infrastructure";
+import Pipelines from "./pages/Pipelines";
+import Deployments from "./pages/Deployments";
 import Settings from "./pages/Settings";
+import Docs from "./pages/Docs";
+import GithubActionsDocs from "./pages/GithubActionsDocs";
+import ProviderIntegrationDocs from "./pages/ProviderIntegrationDocs";
 import LoginPage from "./pages/LoginPage";
 import NotFound from "./pages/NotFound";
 
@@ -27,6 +32,9 @@ const App = () => (
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/docs" element={<Docs />} />
+          <Route path="/docs/github-actions" element={<GithubActionsDocs />} />
+          <Route path="/docs/integrations/:providerId" element={<ProviderIntegrationDocs />} />
           
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
@@ -37,9 +45,8 @@ const App = () => (
               <Route path="/monitoring" element={<Monitoring />} />
               <Route path="/security" element={<Security />} />
               <Route path="/infrastructure" element={<Infrastructure />} />
-              {/* Placeholder routes */}
-              <Route path="/pipelines" element={<Dashboard />} />
-              <Route path="/deployments" element={<Dashboard />} />
+              <Route path="/pipelines" element={<Pipelines />} />
+              <Route path="/deployments" element={<Deployments />} />
               <Route path="/metrics" element={<Monitoring />} />
               <Route path="/logs" element={<Monitoring />} />
               <Route path="/alerts" element={<Monitoring />} />

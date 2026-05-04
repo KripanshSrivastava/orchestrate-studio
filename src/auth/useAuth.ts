@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import keycloak from './keycloak';
+import { clearKeycloakAuthState } from './tokenStorage';
 
 interface KeycloakUser {
   sub: string;
@@ -33,10 +34,7 @@ export const useAuth = (): UseAuthReturn => {
 
   const logout = () => {
     console.log('🚪 Logout initiated');
-    keycloak.authenticated = false;
-    keycloak.token = undefined;
-    keycloak.refreshToken = undefined;
-    keycloak.tokenParsed = undefined;
+    clearKeycloakAuthState(keycloak);
     try {
       keycloak.logout({ redirectUri: `${window.location.origin}/login` });
     } catch {
@@ -46,6 +44,10 @@ export const useAuth = (): UseAuthReturn => {
 
   const login = () => {
     console.log('🔐 Login initiated');
+    if (keycloak.authenticated && keycloak.token) {
+      window.location.assign('/dashboard');
+      return;
+    }
     keycloak.login();
   };
 

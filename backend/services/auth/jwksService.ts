@@ -1,6 +1,6 @@
 import axios from 'axios';
 import jwt from 'jsonwebtoken';
-import NodeRSA from 'node-rsa';
+import { createPublicKey } from 'node:crypto';
 import { KEYCLOAK_CONFIG } from '../../config/keycloak.js';
 
 export interface JWKSKey {
@@ -19,7 +19,9 @@ export interface DecodedToken {
   preferred_username: string;
   realm_access: { roles: string[] };
   iss: string;
-  aud: string;
+  aud: string | string[];
+  azp?: string;
+  client_id?: string;
   exp: number;
   iat: number;
 }
@@ -33,7 +35,7 @@ class JWKSService {
   private cacheMisses: number = 0;
 
   constructor() {
-    this.jwksUrl = `${KEYCLOAK_CONFIG.url}/realms/${KEYCLOAK_CONFIG.realm}/protocol/openid-connect/certs`;
+    this.jwksUrl = `${KEYCLOAK_CONFIG.internalUrl}/realms/${KEYCLOAK_CONFIG.realm}/protocol/openid-connect/certs`;
   }
 
   /**
@@ -85,11 +87,17 @@ class JWKSService {
    * Convert JWKS key to PEM format
    */
   private keyToPEM(key: JWKSKey): string {
-    const rsaKey = new NodeRSA(
-      { n: Buffer.from(key.n, 'base64'), e: Buffer.from(key.e, 'base64') },
-      'components-public'
-    );
-    return rsaKey.exportKey('public') as string;
+    // Keycloak JWKS provides n/e in base64url, which Node can consume directly as JWK.
+    const publicKey = createPublicKey({
+      key: {
+        kty: 'RSA',
+        n: key.n,
+        e: key.e,
+      },
+      format: 'jwk',
+    });
+
+    return publicKey.export({ type: 'spki', format: 'pem' }).toString();
   }
 
   /**
@@ -116,17 +124,23 @@ class JWKSService {
 
       // Convert to PEM
       const pem = this.keyToPEM(key);
-
-      // Verify signature and claims
+      // Verify signature, expiry, and issuer here. Audience/client validation
+      // is handled in authMiddleware so Keycloak public-client tokens that use
+      // azp instead of aud can still be accepted safely.
       const verified = jwt.verify(token, pem, {
         algorithms: ['RS256'],
         issuer: `${KEYCLOAK_CONFIG.url}/realms/${KEYCLOAK_CONFIG.realm}`,
-        audience: KEYCLOAK_CONFIG.clientId,
-      }) as DecodedToken;
+      });
 
-      console.log(`[JWT Verify] ✅ Signature valid - sub: ${verified.sub}, exp: ${new Date(verified.exp * 1000).toISOString()}`);
+      if (!verified || typeof verified === 'string') {
+        throw new Error('Invalid token payload');
+      }
 
-      return verified;
+      const payload = verified as DecodedToken;
+
+      console.log(`[JWT Verify] ✅ Signature valid - sub: ${payload.sub}, exp: ${new Date(payload.exp * 1000).toISOString()}`);
+
+      return payload;
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
         console.warn(`[JWT Verify] ❌ Token expired at ${new Date(error.expiredAt).toISOString()}`);

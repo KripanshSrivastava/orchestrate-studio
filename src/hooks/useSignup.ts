@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import keycloak from "@/auth/keycloak";
+import { storeAuthTokens } from "@/auth/tokenStorage";
 import { validateEmail, validatePassword } from "@/lib/validations";
 
 interface SignupData {
@@ -79,8 +80,12 @@ export const useSignup = () => {
 
       // Store token in Keycloak JS
       if (result.token) {
+        if (typeof result.token !== 'string' || !result.token.includes('.')) {
+          throw new Error('Invalid token format received from server');
+        }
         keycloak.token = result.token;
         keycloak.refreshToken = result.refreshToken;
+        storeAuthTokens(result.token, result.refreshToken);
         try {
           keycloak.tokenParsed = JSON.parse(atob(result.token.split(".")[1]));
           keycloak.authenticated = true;

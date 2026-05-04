@@ -265,18 +265,18 @@ describe('Multi-Tenant Enforcement', () => {
       expect(result).toBeNull(); // Returns null, not error (safe access)
     });
 
-    it('should throw on cross-org update attempt', async () => {
-      // Beta user tries to update ACME record
-      await expect(
-        repo.update(betaContext, acmeRecord.id, { name: 'Hacked' })
-      ).rejects.toThrow(CrossOrgAccessError);
+    it('should return null on cross-org update attempt', async () => {
+      // Beta user tries to update ACME record.
+      // By design, cross-org records are invisible, so update returns null.
+      const updated = await repo.update(betaContext, acmeRecord.id, { name: 'Hacked' });
+      expect(updated).toBeNull();
     });
 
-    it('should throw on cross-org delete attempt', async () => {
-      // Gamma user tries to delete ACME record
-      await expect(repo.delete(gammaContext, acmeRecord.id)).rejects.toThrow(
-        CrossOrgAccessError
-      );
+    it('should return false on cross-org delete attempt', async () => {
+      // Gamma user tries to delete ACME record.
+      // By design, cross-org records are invisible, so delete returns false.
+      const deleted = await repo.delete(gammaContext, acmeRecord.id);
+      expect(deleted).toBe(false);
     });
 
     it('should prevent accidental cross-org query by filter', async () => {

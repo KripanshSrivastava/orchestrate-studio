@@ -1,4 +1,16 @@
 import keycloak from '@/auth/keycloak';
+import { clearKeycloakAuthState, storeAuthTokens } from '@/auth/tokenStorage';
+
+/**
+ * Validate JWT format
+ */
+const isValidJwtFormat = (token?: string): boolean => {
+  if (!token || typeof token !== 'string') {
+    return false;
+  }
+  const parts = token.split('.');
+  return parts.length === 3;
+};
 
 /**
  * Attach Keycloak token to API requests
@@ -10,21 +22,26 @@ export const apiCall = async (
 ): Promise<Response> => {
   // Ensure token is still valid
   if (keycloak.token) {
-    try {
-      const refreshed = await keycloak.updateToken(30);
-      if (refreshed) {
-        console.log('Token refreshed');
-      }
-    } catch (error) {
-      console.error('Failed to refresh token:', error);
-      keycloak.authenticated = false;
-      keycloak.token = undefined;
-      keycloak.refreshToken = undefined;
-      keycloak.tokenParsed = undefined;
+    if (!isValidJwtFormat(keycloak.token)) {
+      console.error('[apiCall] Stored token has invalid format, clearing auth');
+      clearKeycloakAuthState(keycloak);
+    } else {
       try {
-        keycloak.logout();
-      } catch {
-        // If no active IdP browser session exists, local auth state is already cleared.
+        const refreshed = await keycloak.updateToken(30);
+        if (refreshed) {
+          console.log('[apiCall] Token refreshed');
+          if (keycloak.token) {
+            storeAuthTokens(keycloak.token, keycloak.refreshToken);
+          }
+        }
+      } catch (error) {
+        console.error('[apiCall] Failed to refresh token:', error instanceof Error ? error.message : error);
+        clearKeycloakAuthState(keycloak);
+        try {
+          keycloak.logout();
+        } catch {
+          // If no active IdP browser session exists, local auth state is already cleared.
+        }
       }
     }
   }

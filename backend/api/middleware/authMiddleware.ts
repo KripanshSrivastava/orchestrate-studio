@@ -7,6 +7,12 @@ export interface AuthRequest extends Request {
   traceId?: string;
 }
 
+const getOrgIdFromRoles = (roles: string[] = []): string => {
+  const orgRole = roles.find((role) => role.startsWith('org:'));
+  const orgId = orgRole?.substring('org:'.length).trim();
+  return orgId || process.env.DEFAULT_ORG_ID || 'default-org';
+};
+
 /**
  * Generate unique trace ID for correlation
  */
@@ -35,23 +41,32 @@ export function validateTokenExpiry(exp: number, traceId: string): { valid: bool
 /**
  * Validate token audience
  */
-export function validateAudience(aud: string | string[] | undefined, traceId: string): { valid: boolean; message: string } {
-  const expectedAudience = KEYCLOAK_CONFIG.clientId;
+export function validateAudience(
+  aud: string | string[] | undefined,
+  traceId: string,
+  authorizedParty?: string
+): { valid: boolean; message: string } {
+  const expectedAudiences = KEYCLOAK_CONFIG.allowedAudiences;
 
-  if (!aud) {
-    console.warn(`[${traceId}] Token missing audience claim`);
-    return { valid: false, message: 'Token missing audience claim' };
+  const audiences = [
+    ...(Array.isArray(aud) ? aud : aud ? [aud] : []),
+    ...(authorizedParty ? [authorizedParty] : []),
+  ];
+
+  if (audiences.length === 0) {
+    console.warn(`[${traceId}] Token missing audience/client claim`);
+    return { valid: false, message: 'Token missing audience/client claim' };
   }
 
-  const audiences = Array.isArray(aud) ? aud : [aud];
+  const matches = audiences.some((audience) => expectedAudiences.includes(audience));
 
-  if (!audiences.includes(expectedAudience)) {
-    console.warn(`[${traceId}] Token audience mismatch. Expected: ${expectedAudience}, Got: ${audiences.join(', ')}`);
-    return { valid: false, message: `Token audience mismatch. Expected: ${expectedAudience}` };
+  if (!matches) {
+    console.warn(`[${traceId}] Token audience/client mismatch. Expected one of: ${expectedAudiences.join(', ')}, Got: ${audiences.join(', ')}`);
+    return { valid: false, message: `Token audience/client mismatch. Expected one of: ${expectedAudiences.join(', ')}` };
   }
 
-  console.info(`[${traceId}] Token audience valid: ${expectedAudience}`);
-  return { valid: true, message: 'Audience claim valid' };
+  console.info(`[${traceId}] Token audience/client valid: ${audiences.join(', ')}`);
+  return { valid: true, message: 'Audience/client claim valid' };
 }
 
 /**
@@ -81,6 +96,7 @@ export function validateUserClaims(
   }
 
   console.info(`[${traceId}] User claims valid - sub: ${decoded.sub}, email: ${decoded.email}`);
+  const roles = decoded.realm_access?.roles || [];
 
   return {
     valid: true,
@@ -91,7 +107,7 @@ export function validateUserClaims(
       name: decoded.name,
       preferred_username: decoded.preferred_username,
       realm_access: decoded.realm_access,
-      org_id: decoded.realm_access?.roles?.[0] || 'default-org',
+      org_id: getOrgIdFromRoles(roles),
     },
   };
 }
@@ -110,7 +126,7 @@ export function validateTokenClaims(
   }
 
   // Validate audience
-  const audienceValidation = validateAudience(decoded.aud, traceId);
+  const audienceValidation = validateAudience(decoded.aud, traceId, decoded.azp || decoded.client_id);
   if (!audienceValidation.valid) {
     return { valid: false, message: audienceValidation.message };
   }

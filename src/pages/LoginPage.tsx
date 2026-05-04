@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import keycloak from "@/auth/keycloak";
+import { storeAuthTokens } from "@/auth/tokenStorage";
 import { validateEmail, validatePassword, getPasswordStrength, getStrengthLabel, getStrengthColor } from "@/lib/validations";
 import useSignup from "@/hooks/useSignup";
 
@@ -52,6 +53,12 @@ export default function LoginPage() {
     return () => clearTimeout(t);
   }, []);
 
+  useEffect(() => {
+    if (keycloak.authenticated && keycloak.token) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [navigate]);
+
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newPassword = e.target.value;
     setPassword(newPassword);
@@ -88,6 +95,7 @@ export default function LoginPage() {
             grant_type: "password",
             username: email,
             password: password,
+            scope: "openid profile email",
           }),
         }
       );
@@ -99,13 +107,24 @@ export default function LoginPage() {
 
       const tokenData = await tokenResponse.json();
 
+      // Validate token format
+      if (!tokenData.access_token || typeof tokenData.access_token !== 'string') {
+        throw new Error('Invalid token format received from server');
+      }
+
       // Store token in Keycloak JS instance
       keycloak.token = tokenData.access_token;
       keycloak.refreshToken = tokenData.refresh_token;
-      keycloak.tokenParsed = JSON.parse(
-        atob(tokenData.access_token.split(".")[1])
-      );
+      try {
+        keycloak.tokenParsed = JSON.parse(
+          atob(tokenData.access_token.split(".")[1])
+        );
+      } catch (e) {
+        console.error('Failed to parse JWT:', e);
+        throw new Error('Received malformed JWT token from server');
+      }
       keycloak.authenticated = true;
+      storeAuthTokens(tokenData.access_token, tokenData.refresh_token);
 
       console.log("✅ Login successful, redirecting to dashboard...");
 

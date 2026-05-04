@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Activity, Search, Filter, BarChart3, FileText, GitBranch, AlertTriangle, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 
@@ -32,10 +33,10 @@ const logs = [
 ];
 
 const alerts = [
-  { title: "High CPU usage on payment-svc", severity: "critical", time: "5m ago", acked: false },
-  { title: "Error rate spike on api-gateway", severity: "warning", time: "12m ago", acked: false },
-  { title: "Disk usage > 85% on rds-prod", severity: "warning", time: "1h ago", acked: true },
-  { title: "Certificate expiring in 7 days", severity: "info", time: "2h ago", acked: false },
+  { id: 1, title: "High CPU usage on payment-svc", severity: "critical", time: "5m ago", acked: false },
+  { id: 2, title: "Error rate spike on api-gateway", severity: "warning", time: "12m ago", acked: false },
+  { id: 3, title: "Disk usage > 85% on rds-prod", severity: "warning", time: "1h ago", acked: true },
+  { id: 4, title: "Certificate expiring in 7 days", severity: "info", time: "2h ago", acked: false },
 ];
 
 const logLevelStyle: Record<string, string> = {
@@ -54,7 +55,26 @@ const alertSeverityStyle: Record<string, { bg: string; icon: React.ElementType }
 type Tab = "metrics" | "logs" | "alerts";
 
 export default function Monitoring() {
-  const [tab, setTab] = useState<Tab>("metrics");
+  const location = useLocation();
+  const initialTab: Tab = location.pathname.includes("logs")
+    ? "logs"
+    : location.pathname.includes("alerts")
+      ? "alerts"
+      : "metrics";
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const [query, setQuery] = useState("");
+  const [level, setLevel] = useState("all");
+  const [alertRows, setAlertRows] = useState(alerts);
+  const filteredLogs = logs.filter((log) => {
+    const matchesQuery = `${log.service} ${log.level} ${log.message}`.toLowerCase().includes(query.toLowerCase());
+    const matchesLevel = level === "all" || log.level === level;
+    return matchesQuery && matchesLevel;
+  });
+  const openAlerts = alertRows.filter((alert) => !alert.acked).length;
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   return (
     <div className="p-6 space-y-4 animate-fade-in">
@@ -72,7 +92,7 @@ export default function Monitoring() {
         {([
           { key: "metrics", label: "Metrics", icon: BarChart3 },
           { key: "logs", label: "Logs", icon: FileText },
-          { key: "alerts", label: "Alerts", icon: AlertTriangle, count: 2 },
+          { key: "alerts", label: "Alerts", icon: AlertTriangle, count: openAlerts },
         ] as const).map((t) => (
           <button
             key={t.key}
@@ -158,14 +178,26 @@ export default function Monitoring() {
           <div className="flex items-center gap-3">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input placeholder="Search logs..." className="w-full bg-secondary border-0 rounded-lg pl-9 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search logs..."
+                className="w-full bg-secondary border-0 rounded-lg pl-9 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
             </div>
-            <button className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary text-sm text-foreground hover:bg-accent transition-colors">
-              <Filter className="w-4 h-4" /> Filters
-            </button>
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary text-sm text-foreground">
+              <Filter className="w-4 h-4" />
+              <select value={level} onChange={(e) => setLevel(e.target.value)} className="bg-transparent text-sm outline-none">
+                <option value="all">All levels</option>
+                <option value="error">Error</option>
+                <option value="warn">Warn</option>
+                <option value="info">Info</option>
+                <option value="debug">Debug</option>
+              </select>
+            </div>
           </div>
           <div className="glass-panel font-mono text-xs overflow-hidden">
-            {logs.map((log, i) => (
+            {filteredLogs.map((log, i) => (
               <div key={i} className="flex items-start gap-3 px-4 py-2 border-b border-border/30 hover:bg-accent/20 transition-colors">
                 <span className="text-muted-foreground shrink-0 w-24">{log.time}</span>
                 <span className={`shrink-0 w-12 font-semibold uppercase ${logLevelStyle[log.level]}`}>{log.level}</span>
@@ -173,16 +205,19 @@ export default function Monitoring() {
                 <span className="text-foreground">{log.message}</span>
               </div>
             ))}
+            {filteredLogs.length === 0 && (
+              <div className="px-4 py-6 text-center text-muted-foreground">No logs match the current filters.</div>
+            )}
           </div>
         </div>
       )}
 
       {tab === "alerts" && (
         <div className="space-y-3">
-          {alerts.map((alert, i) => {
+          {alertRows.map((alert) => {
             const style = alertSeverityStyle[alert.severity];
             return (
-              <div key={i} className={`glass-panel p-4 border ${style.bg} flex items-center gap-4`}>
+              <div key={alert.id} className={`glass-panel p-4 border ${style.bg} flex items-center gap-4`}>
                 <style.icon className={`w-5 h-5 shrink-0 ${alert.severity === "critical" ? "text-destructive" : alert.severity === "warning" ? "text-warning" : "text-info"}`} />
                 <div className="flex-1">
                   <p className="text-sm font-medium text-foreground">{alert.title}</p>
@@ -191,7 +226,12 @@ export default function Monitoring() {
                 {alert.acked ? (
                   <span className="flex items-center gap-1 text-xs text-success"><CheckCircle2 className="w-3.5 h-3.5" /> Acknowledged</span>
                 ) : (
-                  <button className="px-3 py-1 rounded-md bg-secondary text-xs text-foreground hover:bg-accent transition-colors">Acknowledge</button>
+                  <button
+                    onClick={() => setAlertRows((rows) => rows.map((row) => row.id === alert.id ? { ...row, acked: true } : row))}
+                    className="px-3 py-1 rounded-md bg-secondary text-xs text-foreground hover:bg-accent transition-colors"
+                  >
+                    Acknowledge
+                  </button>
                 )}
               </div>
             );

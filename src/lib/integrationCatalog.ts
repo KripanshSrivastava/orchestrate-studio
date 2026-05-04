@@ -19,23 +19,23 @@ export const integrationCatalog: IntegrationDefinition[] = [
     id: "github",
     name: "GitHub",
     group: "Git Providers",
-    description: "Repository and webhook integration for source events.",
+    description: "GitHub API credentials for repository and workflow nodes.",
     nodeTypes: ["github"],
     fields: [
-      { key: "owner", label: "Owner / Organization", placeholder: "acme-org" },
-      { key: "repository", label: "Repository", placeholder: "platform-service" },
-      { key: "token", label: "Personal Access Token", placeholder: "ghp_xxx", type: "password" },
+      { key: "repository", label: "Repository", placeholder: "owner/repo or https://github.com/owner/repo" },
+      { key: "owner", label: "Owner", placeholder: "organization or username" },
+      { key: "token", label: "GitHub Token", placeholder: "ghp_xxx", type: "password" },
     ],
   },
   {
     id: "github-actions",
     name: "GitHub Actions",
     group: "CI Tools",
-    description: "Trigger and monitor workflow runs.",
+    description: "Trigger and monitor workflow runs using your connected GitHub credentials.",
     nodeTypes: ["gh-actions", "gh-actions-cd"],
     fields: [
-      { key: "workflowFile", label: "Workflow File", placeholder: "ci.yml" },
-      { key: "branch", label: "Default Branch", placeholder: "main" },
+      { key: "workflowFile", label: "Workflow File", placeholder: ".github/workflows/ci.yml" },
+      { key: "branch", label: "Branch", placeholder: "main" },
     ],
   },
   {
@@ -57,7 +57,6 @@ export const integrationCatalog: IntegrationDefinition[] = [
     nodeTypes: ["sonarqube"],
     fields: [
       { key: "serverUrl", label: "Server URL", placeholder: "https://sonar.company.com", type: "url" },
-      { key: "projectKey", label: "Project Key", placeholder: "platform-api" },
       { key: "token", label: "Token", placeholder: "sonar-token", type: "password" },
     ],
   },
@@ -67,10 +66,7 @@ export const integrationCatalog: IntegrationDefinition[] = [
     group: "Security & Quality",
     description: "Container image and IaC scanning.",
     nodeTypes: ["trivy"],
-    fields: [
-      { key: "severity", label: "Severity Threshold", placeholder: "HIGH,CRITICAL" },
-      { key: "timeout", label: "Scan Timeout (seconds)", placeholder: "600" },
-    ],
+    fields: [],
   },
   {
     id: "dockerhub",
@@ -80,7 +76,6 @@ export const integrationCatalog: IntegrationDefinition[] = [
     nodeTypes: ["dockerhub"],
     fields: [
       { key: "username", label: "Username", placeholder: "dockerhub-user" },
-      { key: "repository", label: "Repository", placeholder: "idp/platform" },
       { key: "token", label: "Access Token", placeholder: "docker-token", type: "password" },
     ],
   },
@@ -92,7 +87,6 @@ export const integrationCatalog: IntegrationDefinition[] = [
     nodeTypes: ["argocd"],
     fields: [
       { key: "serverUrl", label: "ArgoCD URL", placeholder: "https://argocd.company.com", type: "url" },
-      { key: "project", label: "Project", placeholder: "default" },
       { key: "token", label: "API Token", placeholder: "argocd-token", type: "password" },
     ],
   },
@@ -104,7 +98,6 @@ export const integrationCatalog: IntegrationDefinition[] = [
     nodeTypes: ["prometheus"],
     fields: [
       { key: "serverUrl", label: "Prometheus URL", placeholder: "http://prometheus:9090", type: "url" },
-      { key: "scrapeInterval", label: "Scrape Interval", placeholder: "15s" },
     ],
   },
   {
@@ -115,7 +108,6 @@ export const integrationCatalog: IntegrationDefinition[] = [
     nodeTypes: ["elk-stack", "efk"],
     fields: [
       { key: "elasticsearchUrl", label: "Elasticsearch URL", placeholder: "http://elasticsearch:9200", type: "url" },
-      { key: "indexPrefix", label: "Index Prefix", placeholder: "logs-platform" },
     ],
   },
   {
@@ -126,7 +118,6 @@ export const integrationCatalog: IntegrationDefinition[] = [
     nodeTypes: ["alertmanager"],
     fields: [
       { key: "serverUrl", label: "Alertmanager URL", placeholder: "http://alertmanager:9093", type: "url" },
-      { key: "receiver", label: "Default Receiver", placeholder: "devops-slack" },
     ],
   },
 ];

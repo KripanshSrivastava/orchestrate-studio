@@ -25,7 +25,6 @@ export interface TokenResponse {
 export class KeycloakService {
   private baseUrl: string;
   private realm: string;
-  private clientId: string;
   private passwordGrantClientId: string;
   private clientSecret: string;
   private adminToken: string | null = null;
@@ -34,7 +33,6 @@ export class KeycloakService {
   constructor() {
     this.baseUrl = process.env.KEYCLOAK_URL || 'http://localhost:8081';
     this.realm = process.env.KEYCLOAK_REALM || 'idp';
-    this.clientId = process.env.KEYCLOAK_CLIENT_ID || 'idp-backend';
     this.passwordGrantClientId = process.env.KEYCLOAK_PASSWORD_CLIENT_ID || process.env.KEYCLOAK_FRONTEND_CLIENT_ID || 'idp-frontend';
     this.clientSecret = process.env.KEYCLOAK_CLIENT_SECRET || '';
   }
