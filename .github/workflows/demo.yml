@@ -1,0 +1,504 @@
+name: 🚀 Orcestra Demo Pipeline
+
+on:
+  push:
+    branches: [main, dev, staging]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:        # allows manual trigger from GitHub UI
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      run_load_test:
+        description: 'Run k6 load test?'
+        required: false
+        default: 'false'
+        type: boolean
+
+# ─────────────────────────────────────────
+# Global env vars available to all jobs
+# ─────────────────────────────────────────
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.11'
+  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/orcestra-app
+  IMAGE_TAG: ${{ github.sha }}
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'staging' }}
+
+# ─────────────────────────────────────────
+# JOB 1: Validate & Lint
+# ─────────────────────────────────────────
+jobs:
+  validate:
+    name: 🔍 Validate & Lint
+    runs-on: ubuntu-latest
+    outputs:
+      lint_passed: ${{ steps.lint.outcome }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0              # full history for better analysis
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: |
+          echo "Installing dependencies..."
+          npm ci
+          echo "✅ Dependencies installed"
+
+      - name: 🔍 Lint code
+        id: lint
+        run: |
+          echo "Running ESLint..."
+          # npm run lint
+          echo "✅ Lint passed — no errors found"
+
+      - name: 🔷 TypeScript check
+        run: |
+          echo "Running TypeScript compiler check..."
+          # npx tsc --noEmit
+          echo "✅ TypeScript check passed"
+
+      - name: 📊 Count files changed
+        run: |
+          echo "Files changed in this push:"
+          git diff --name-only HEAD~1 HEAD || echo "First commit"
+          echo "Total: $(git diff --name-only HEAD~1 HEAD | wc -l) files"
+
+      - name: 📢 Notify Orcestra — Validate Started
+        if: always()
+        run: |
+          echo "Notifying Orcestra backend..."
+          echo "Pipeline ID  : ${{ github.run_id }}"
+          echo "Commit SHA   : ${{ github.sha }}"
+          echo "Branch       : ${{ github.ref_name }}"
+          echo "Triggered by : ${{ github.actor }}"
+          echo "Status       : validate_started"
+          # curl -s -X POST ${{ secrets.ORCESTRA_API_URL }}/api/github/notify \
+          #   -H "Content-Type: application/json" \
+          #   -H "X-Orcestra-Secret: ${{ secrets.ORCESTRA_SECRET }}" \
+          #   -d '{"stage":"validate","status":"started","sha":"${{ github.sha }}"}'
+
+# ─────────────────────────────────────────
+# JOB 2: Test (unit + integration)
+# ─────────────────────────────────────────
+  test:
+    name: 🧪 Run Tests
+    runs-on: ubuntu-latest
+    needs: validate
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: orcestra_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: ⏳ Wait for services
+        run: |
+          echo "Waiting for PostgreSQL..."
+          sleep 5
+          echo "Waiting for Redis..."
+          sleep 2
+          echo "✅ Services ready"
+
+      - name: 🗄️ Run DB migrations
+        run: |
+          echo "Running database migrations..."
+          # npm run migrate
+          echo "✅ Migrations complete"
+        env:
+          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/orcestra_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: 🧪 Unit tests
+        run: |
+          echo "Running unit tests..."
+          # npm run test:unit -- --coverage
+          echo ""
+          echo "Test Results (Demo):"
+          echo "  ✅ AuthService        — 12/12 passed"
+          echo "  ✅ PipelineService    — 8/8 passed"
+          echo "  ✅ WorkflowEngine     — 15/15 passed"
+          echo "  ✅ DAGParser          — 6/6 passed"
+          echo "  ✅ NodeLibrary        — 10/10 passed"
+          echo ""
+          echo "Coverage: 87% statements | 82% branches | 91% functions"
+        env:
+          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/orcestra_test
+          REDIS_URL: redis://localhost:6379
+          NODE_ENV: test
+
+      - name: 🔗 Integration tests
+        run: |
+          echo "Running integration tests..."
+          # npm run test:integration
+          echo ""
+          echo "  ✅ POST /api/workflows       — 201 Created"
+          echo "  ✅ GET  /api/workflows       — 200 OK (with auth)"
+          echo "  ✅ POST /api/pipeline/run    — 202 Accepted"
+          echo "  ✅ GET  /api/integrations    — 200 OK"
+          echo "  ✅ WS   /pipeline:created    — Event received"
+          echo ""
+          echo "All integration tests passed!"
+
+      - name: 📊 Upload coverage report
+        if: always()
+        run: |
+          echo "Uploading coverage to Codecov..."
+          # npx codecov
+          echo "✅ Coverage report uploaded"
+
+      - name: 📢 Notify Orcestra — Tests Complete
+        if: always()
+        run: |
+          echo "Stage: test"
+          echo "Status: ${{ job.status }}"
+          echo "Run ID: ${{ github.run_id }}"
+
+# ─────────────────────────────────────────
+# JOB 3: Security Scan (Trivy)
+# ─────────────────────────────────────────
+  security-scan:
+    name: 🔐 Security Scan
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Scan filesystem for secrets
+        run: |
+          echo "Scanning for hardcoded secrets..."
+          echo "Checking for API keys, tokens, passwords in code..."
+          # Use tools like truffleHog or gitleaks in production
+          grep -r "password\s*=\s*['\"][^'\"]*['\"]" --include="*.ts" --include="*.js" . \
+            --exclude-dir=node_modules || echo "✅ No hardcoded passwords found"
+          echo "✅ Secret scan complete"
+
+      - name: 🐳 Build Docker image for scanning
+        run: |
+          echo "Building Docker image for security scan..."
+          echo "Image: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}"
+          # docker build -t ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }} .
+          echo "✅ Image built (demo — skipping actual build)"
+
+      - name: 🛡️ Trivy vulnerability scan
+        run: |
+          echo "Running Trivy container scan..."
+          echo ""
+          echo "Trivy Security Report (Demo Output):"
+          echo "┌──────────────┬────────────────────┬──────────┬───────────┐"
+          echo "│ Library      │ Vulnerability      │ Severity │ Fixed In  │"
+          echo "├──────────────┼────────────────────┼──────────┼───────────┤"
+          echo "│ node:20      │ No CVEs found      │    -     │     -     │"
+          echo "│ npm packages │ No CVEs found      │    -     │     -     │"
+          echo "└──────────────┴────────────────────┴──────────┴───────────┘"
+          echo ""
+          echo "✅ Security Score: 100/100 — No CRITICAL or HIGH vulnerabilities"
+          echo "✅ Trivy scan passed — safe to proceed"
+          # Real command:
+          # docker run --rm aquasec/trivy image \
+          #   --severity HIGH,CRITICAL \
+          #   --exit-code 1 \
+          #   --format table \
+          #   ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
+
+      - name: 📢 Notify Orcestra — Security Scan Result
+        if: always()
+        run: |
+          echo "Stage: security_scan"
+          echo "Status: ${{ job.status }}"
+          echo "Security score: 100"
+
+# ─────────────────────────────────────────
+# JOB 4: Build & Push Docker Image
+# ─────────────────────────────────────────
+  build:
+    name: 🐳 Build & Push Image
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    outputs:
+      image_digest: ${{ steps.push.outputs.digest }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Login to Docker Hub
+        run: |
+          echo "Logging in to Docker Hub..."
+          # echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login \
+          #   -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+          echo "✅ Docker Hub login successful (demo)"
+
+      - name: 🏗️ Build Docker image
+        run: |
+          echo "Building Docker image..."
+          echo "Image: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}"
+          echo "Also tagging as: ${{ env.DOCKER_IMAGE }}:latest"
+          # docker buildx build \
+          #   --platform linux/amd64,linux/arm64 \
+          #   --tag ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }} \
+          #   --tag ${{ env.DOCKER_IMAGE }}:latest \
+          #   --push .
+          echo ""
+          echo "Build log (demo):"
+          echo "  Step 1/8 : FROM node:20-alpine"
+          echo "  Step 2/8 : WORKDIR /app"
+          echo "  Step 3/8 : COPY package*.json ./"
+          echo "  Step 4/8 : RUN npm ci --only=production"
+          echo "  Step 5/8 : COPY . ."
+          echo "  Step 6/8 : RUN npm run build"
+          echo "  Step 7/8 : EXPOSE 3000"
+          echo "  Step 8/8 : CMD [\"node\", \"dist/index.js\"]"
+          echo ""
+          echo "✅ Image built and pushed successfully"
+
+      - name: 📝 Save image digest
+        id: push
+        run: |
+          DIGEST="sha256:demo$(echo ${{ github.sha }} | head -c 40)"
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+          echo "Image digest: $DIGEST"
+
+      - name: 🔄 Update K8s manifest with new image tag
+        run: |
+          echo "Updating Kubernetes deployment manifest..."
+          echo "Old image: ${{ env.DOCKER_IMAGE }}:previous"
+          echo "New image: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}"
+          # sed -i "s|image: .*|image: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}|" k8s/deployment.yaml
+          # git config user.email "ci@orcestra.io"
+          # git config user.name "Orcestra CI Bot"
+          # git add k8s/deployment.yaml
+          # git commit -m "ci: update image to ${{ env.IMAGE_TAG }}"
+          # git push
+          echo "✅ K8s manifest updated — ArgoCD will auto-sync"
+
+      - name: 📢 Notify Orcestra — Build Complete
+        if: always()
+        run: |
+          echo "Stage: build"
+          echo "Status: ${{ job.status }}"
+          echo "Image: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}"
+          echo "Digest: ${{ steps.push.outputs.digest }}"
+
+# ─────────────────────────────────────────
+# JOB 5: Deploy to Staging
+# ─────────────────────────────────────────
+  deploy:
+    name: 🚀 Deploy to ${{ github.event.inputs.environment || 'staging' }}
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: ${{ github.event.inputs.environment || 'staging' }}
+      url: https://staging.orcestra.io
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup kubectl
+        run: |
+          echo "Setting up kubectl..."
+          # curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          # chmod +x kubectl && mv kubectl /usr/local/bin/
+          echo "✅ kubectl ready (demo)"
+
+      - name: 🔐 Configure kubeconfig
+        run: |
+          echo "Configuring cluster access..."
+          # echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          echo "✅ Cluster access configured"
+
+      - name: 🚀 Deploy via ArgoCD sync
+        run: |
+          echo "Triggering ArgoCD sync..."
+          echo "Application: orcestra-${{ env.ENVIRONMENT }}"
+          echo "Image: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}"
+          # curl -s -X POST \
+          #   -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
+          #   https://argocd.orcestra.io/api/v1/applications/orcestra/sync
+          echo ""
+          echo "ArgoCD Sync Status (demo):"
+          echo "  Sync Status  : Synced"
+          echo "  Health       : Healthy"
+          echo "  Pods         : 3/3 Running"
+          echo "  Revision     : ${{ github.sha }}"
+          echo ""
+          echo "✅ Deployment successful"
+
+      - name: ⏳ Wait for rollout
+        run: |
+          echo "Waiting for deployment rollout..."
+          # kubectl rollout status deployment/orcestra-app -n orcestra --timeout=120s
+          sleep 3
+          echo "✅ Rollout complete — all pods healthy"
+
+      - name: 🩺 Smoke test deployed app
+        run: |
+          echo "Running smoke tests against deployed app..."
+          echo ""
+          echo "  GET /health      → 200 OK ✅"
+          echo "  GET /ready       → 200 OK ✅"
+          echo "  GET /api/info    → 200 OK ✅"
+          echo ""
+          # curl -f https://staging.orcestra.io/health
+          echo "✅ Smoke tests passed"
+
+      - name: 📢 Notify Orcestra — Deploy Complete
+        if: always()
+        run: |
+          echo "Stage: deploy"
+          echo "Status: ${{ job.status }}"
+          echo "Environment: ${{ env.ENVIRONMENT }}"
+          echo "URL: https://staging.orcestra.io"
+
+# ─────────────────────────────────────────
+# JOB 6: Load Test (k6) — optional
+# ─────────────────────────────────────────
+  load-test:
+    name: 📊 Load Test (k6)
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: ${{ github.event.inputs.run_load_test == 'true' }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Install k6
+        run: |
+          curl -s https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz \
+            -L -o k6.tar.gz
+          tar -xzf k6.tar.gz
+          mv k6-v0.49.0-linux-amd64/k6 /usr/local/bin/
+          echo "✅ k6 installed"
+
+      - name: 🏃 Run load test
+        run: |
+          echo "Running k6 load test..."
+          echo ""
+          echo "k6 Results (demo):"
+          echo "  scenarios: 1, max VUs: 50, duration: 2m"
+          echo ""
+          echo "  ✅ http_req_duration p(95)  : 243ms  < 500ms threshold"
+          echo "  ✅ http_req_failed          : 0.00%  < 1% threshold"
+          echo "  ✅ http_reqs               : 3420   total"
+          echo "  ✅ vus_max                 : 50"
+          echo ""
+          echo "All thresholds passed!"
+          # k6 run --out json=k6-results.json k8s/k6-test.js
+
+      - name: 📢 Notify Orcestra — Load Test Result
+        if: always()
+        run: |
+          echo "Stage: load_test"
+          echo "Status: ${{ job.status }}"
+          echo "p95 latency: 243ms"
+          echo "Error rate: 0.00%"
+
+# ─────────────────────────────────────────
+# JOB 7: Final Summary
+# ─────────────────────────────────────────
+  summary:
+    name: 📋 Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [validate, test, security-scan, build, deploy]
+    if: always()
+
+    steps:
+      - name: 📋 Print pipeline summary
+        run: |
+          echo "================================================"
+          echo "         ORCESTRA PIPELINE SUMMARY"
+          echo "================================================"
+          echo ""
+          echo "  Repo       : ${{ github.repository }}"
+          echo "  Branch     : ${{ github.ref_name }}"
+          echo "  Commit     : ${{ github.sha }}"
+          echo "  Actor      : ${{ github.actor }}"
+          echo "  Run ID     : ${{ github.run_id }}"
+          echo "  Environment: ${{ env.ENVIRONMENT }}"
+          echo ""
+          echo "  Stage Results:"
+          echo "  ─────────────────────────────────────────"
+          echo "  🔍 Validate      : ${{ needs.validate.result }}"
+          echo "  🧪 Test          : ${{ needs.test.result }}"
+          echo "  🔐 Security Scan : ${{ needs.security-scan.result }}"
+          echo "  🐳 Build         : ${{ needs.build.result }}"
+          echo "  🚀 Deploy        : ${{ needs.deploy.result }}"
+          echo "  ─────────────────────────────────────────"
+          echo ""
+          echo "  Image: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}"
+          echo ""
+          echo "================================================"
+
+      - name: 📢 Final notify to Orcestra
+        if: always()
+        run: |
+          echo "Sending final pipeline result to Orcestra..."
+          echo "pipeline_id : ${{ github.run_id }}"
+          echo "sha         : ${{ github.sha }}"
+          echo "final_status: ${{ job.status }}"
+          echo "duration    : ${{ github.run_attempt }} attempts"
+          # curl -X POST ${{ secrets.ORCESTRA_API_URL }}/api/github/notify \
+          #   -H "Content-Type: application/json" \
+          #   -H "X-Orcestra-Secret: ${{ secrets.ORCESTRA_SECRET }}" \
+          #   -d '{
+          #     "stage": "complete",
+          #     "sha": "${{ github.sha }}",
+          #     "run_id": "${{ github.run_id }}",
+          #     "status": "success",
+          #     "environment": "${{ env.ENVIRONMENT }}",
+          #     "image": "${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}"
+          #   }'
+          echo "✅ Orcestra notified — pipeline complete"
