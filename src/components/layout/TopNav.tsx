@@ -9,12 +9,11 @@ import {
   User,
 } from "lucide-react";
 import { useState } from "react";
+import { useTheme } from "next-themes";
 
 interface TopNavProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
-  isDark: boolean;
-  onToggleTheme: () => void;
 }
 
 const environments = ["Development", "Staging", "Production"] as const;
@@ -25,9 +24,16 @@ const envClass: Record<Env, string> = {
   Production: "env-prod",
 };
 
-export function TopNav({ sidebarOpen, onToggleSidebar, isDark, onToggleTheme }: TopNavProps) {
+export function TopNav({ sidebarOpen, onToggleSidebar }: TopNavProps) {
   const [env, setEnv] = useState<Env>("Development");
   const [envOpen, setEnvOpen] = useState(false);
+  const { resolvedTheme, setTheme } = useTheme();
+
+  const isDark = resolvedTheme === "dark";
+
+  const onToggleTheme = () => {
+    setTheme(isDark ? "light" : "dark");
+  };
 
   return (
     <header className="h-14 border-b border-border bg-card/80 backdrop-blur-xl flex items-center px-4 gap-4 shrink-0 z-50">
@@ -82,7 +88,12 @@ export function TopNav({ sidebarOpen, onToggleSidebar, isDark, onToggleTheme }: 
           <Bell className="w-4.5 h-4.5 text-muted-foreground" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
         </button>
-        <button onClick={onToggleTheme} className="p-2 rounded-md hover:bg-accent transition-colors">
+        <button
+          onClick={onToggleTheme}
+          className="p-2 rounded-md hover:bg-accent transition-colors"
+          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+        >
           {isDark ? <Sun className="w-4.5 h-4.5 text-muted-foreground" /> : <Moon className="w-4.5 h-4.5 text-muted-foreground" />}
         </button>
         <button className="p-1.5 rounded-md hover:bg-accent transition-colors flex items-center gap-2 ml-1">

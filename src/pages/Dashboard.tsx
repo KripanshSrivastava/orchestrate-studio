@@ -9,6 +9,7 @@ import {
   ArrowDownRight,
   TrendingUp,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, BarChart, Bar } from "recharts";
 
 const cpuData = Array.from({ length: 24 }, (_, i) => ({
@@ -60,6 +61,8 @@ const envBadge: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -155,7 +158,7 @@ export default function Dashboard() {
       <div className="glass-panel p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-foreground">Recent Deployments</h3>
-          <button className="text-xs text-primary hover:underline flex items-center gap-1">
+          <button onClick={() => navigate("/deployments")} className="text-xs text-primary hover:underline flex items-center gap-1">
             View all <TrendingUp className="w-3 h-3" />
           </button>
         </div>

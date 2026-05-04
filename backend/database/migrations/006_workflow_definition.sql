@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE workflows
+  ADD COLUMN IF NOT EXISTS definition JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+COMMIT;

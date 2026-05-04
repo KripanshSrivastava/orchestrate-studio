@@ -1,13 +1,73 @@
 import { ReactNode, useEffect, useState } from 'react';
 import keycloak from '@/auth/keycloak';
+import {
+  clearKeycloakAuthState,
+  getStoredTokensForRestore,
+  storeAuthTokens,
+} from '@/auth/tokenStorage';
+
+/**
+ * Verify authenticated user with backend
+ * Audits login event and validates user/org_id setup
+ */
+async function verifyUserWithBackend(token: string): Promise<void> {
+  try {
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/auth/verify`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (response.ok) {
+      const data = await response.json();
+      console.info(`✅ Backend verification successful:`, {
+        user: data.user?.id,
+        email: data.user?.email,
+        org_id: data.user?.org_id,
+      });
+    } else {
+      console.warn(`⚠️ Backend verification returned ${response.status}`);
+    }
+  } catch (error) {
+    console.error('❌ Backend verification failed:', error);
+    // Non-blocking: verification failure doesn't logout user
+  }
+}
 
 interface AuthProviderProps {
   children: ReactNode;
 }
 
+const KEYCLOAK_INIT_TIMEOUT_MS = 8000;
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  let timeoutId: ReturnType<typeof window.setTimeout> | undefined;
+
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(
+      () => reject(new Error(`Keycloak initialization timed out after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
+  }
+};
+
 /**
  * Auth Provider Component
  * Initializes Keycloak and provides loading state
+ * Uses 'check-sso' to allow custom login page
  */
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [isInitialized, setIsInitialized] = useState(false);
@@ -16,27 +76,72 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   useEffect(() => {
     const initKeycloak = async () => {
       try {
-        const authenticated = await keycloak.init({
-          onLoad: 'login-required',
-          silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
-          pkceMethod: 'S256',
-        });
+        const storedTokens = getStoredTokensForRestore();
+
+        // Initialize keycloak without automatic SSO re-login.
+        const authenticated = await withTimeout(
+          keycloak.init({
+            onLoad: 'check-sso',
+            silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
+            silentCheckSsoFallback: false,
+            // Disable login iframe checks to avoid third-party cookie iframe errors in modern browsers.
+            checkLoginIframe: false,
+            token: storedTokens.accessToken,
+            refreshToken: storedTokens.refreshToken,
+            // Removed PKCE (pkceMethod: 'S256') due to Web Crypto API availability issues
+          }),
+          KEYCLOAK_INIT_TIMEOUT_MS
+        );
 
         setIsInitialized(true);
-        console.log(`Keycloak initialized. Authenticated: ${authenticated}`);
+        console.log(`✅ Keycloak initialized. Authenticated: ${authenticated}`);
+        console.log(`🔑 Token: ${keycloak.token ? 'Present' : 'Not present'}`);
+
+        // If authenticated, verify user with backend (audits login, validates org_id)
+        if (authenticated && keycloak.token) {
+          storeAuthTokens(keycloak.token, keycloak.refreshToken);
+          await verifyUserWithBackend(keycloak.token);
+        }
 
         // Setup token refresh
-        keycloak.onTokenExpired = () => {
-          console.log('Token expired, logging out...');
-          keycloak.logout();
+        keycloak.onTokenExpired = async () => {
+          console.log('⏰ Token expired, attempting refresh...');
+          try {
+            await keycloak.updateToken(0);
+            if (keycloak.token) {
+              storeAuthTokens(keycloak.token, keycloak.refreshToken);
+            }
+          } catch (error) {
+            console.error('❌ Token refresh on expiry failed:', error);
+            clearKeycloakAuthState(keycloak);
+          }
         };
 
         // Setup token ready
         keycloak.onAuthSuccess = () => {
-          console.log('Auth successful');
+          console.log('✅ Auth successful');
+          if (keycloak.token) {
+            storeAuthTokens(keycloak.token, keycloak.refreshToken);
+          }
+          // Verify user with backend after successful auth (including social logins)
+          if (keycloak.token) {
+            verifyUserWithBackend(keycloak.token);
+          }
+        };
+
+        keycloak.onAuthRefreshSuccess = () => {
+          if (keycloak.token) {
+            storeAuthTokens(keycloak.token, keycloak.refreshToken);
+          }
+        };
+
+        // Setup auth error
+        keycloak.onAuthError = () => {
+          console.error('❌ Auth error');
         };
       } catch (error) {
-        console.error('Keycloak initialization failed:', error);
+        console.error('❌ Keycloak initialization failed:', error);
+        clearKeycloakAuthState(keycloak);
         setIsInitialized(true);
       } finally {
         setIsLoading(false);

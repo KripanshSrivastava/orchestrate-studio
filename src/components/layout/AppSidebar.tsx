@@ -22,7 +22,7 @@ const navGroups = [
   {
     label: "Overview",
     items: [
-      { title: "Dashboard", path: "/", icon: LayoutDashboard },
+      { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
       { title: "Applications", path: "/applications", icon: Container },
     ],
   },

@@ -6,8 +6,8 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { verifyToken } from './api/middleware/authMiddleware';
-import authRoutes from './api/routes/authRoutes';
+import { verifyToken } from './api/middleware/authMiddleware.js';
+import authRoutes from './api/routes/authRoutes.js';
 
 dotenv.config();
 
@@ -25,7 +25,7 @@ app.use('/api/auth', authRoutes);
  * Protected route example
  * Requires valid JWT token
  */
-app.get('/api/workflows', verifyToken, (req: Request, res: Response) => {
+app.get('/api/workflows', verifyToken, (_req: Request, res: Response) => {
   res.json({
     success: true,
     message: 'Workflows retrieved successfully',
@@ -39,12 +39,12 @@ app.get('/api/workflows', verifyToken, (req: Request, res: Response) => {
 /**
  * Health check endpoint (no auth required)
  */
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });
 
 // Error handling middleware
-app.use((err: any, req: Request, res: Response) => {
+app.use((err: any, _req: Request, res: Response) => {
   console.error('Error:', err);
   res.status(500).json({
     success: false,

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Search, Filter, Rocket, RotateCcw, ExternalLink } from "lucide-react";
+import usePlatformSnapshot from "@/hooks/usePlatformSnapshot";
 
 interface App {
   name: string;
@@ -49,16 +50,29 @@ function UsageBar({ value, color }: { value: number; color: string }) {
 
 export default function Applications() {
   const [search, setSearch] = useState("");
-  const filtered = apps.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()));
+  const { snapshot, isLoading, error, refresh } = usePlatformSnapshot();
+  const rows = snapshot.applications.map((app) => ({
+    name: app.name,
+    env: app.env,
+    version: app.version,
+    status: app.runtime_status,
+    cpu: Number(app.cpu || 0),
+    memory: Number(app.memory || 0),
+    replicas: app.replicas,
+    lastDeploy: new Date(app.last_deploy_at).toLocaleString(),
+  }));
+  const filtered = rows.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="p-6 space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Applications</h1>
-          <p className="text-sm text-muted-foreground">{apps.length} services across all environments</p>
+          <p className="text-sm text-muted-foreground">{rows.length} services across all environments</p>
         </div>
       </div>
+      {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
+      {isLoading && <div className="rounded-md border border-border/60 bg-card/50 px-3 py-2 text-sm text-muted-foreground">Loading applications from database...</div>}
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
@@ -119,10 +133,10 @@ export default function Applications() {
                   <td className="py-3 px-4 text-xs text-muted-foreground">{app.lastDeploy}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center justify-end gap-1">
-                      <button className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors" title="Deploy">
+                      <button onClick={refresh} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors" title="Refresh deployment data">
                         <Rocket className="w-3.5 h-3.5" />
                       </button>
-                      <button className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-warning transition-colors" title="Rollback">
+                      <button onClick={refresh} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-warning transition-colors" title="Refresh rollback data">
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>
                     </div>

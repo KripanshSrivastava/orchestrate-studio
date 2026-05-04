@@ -1,52 +1,42 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  # PostgreSQL database for Keycloak
+
   postgres:
     image: postgres:16-alpine
     container_name: idp-postgres
     environment:
-      POSTGRES_DB: keycloak
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: keycloak_password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_DB: idp_db
+      POSTGRES_USER: idp_user
+      POSTGRES_PASSWORD: secure_password
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../database/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U idp_user -d idp_db"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
     networks:
       - idp-network
 
-  # Keycloak IAM
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     container_name: idp-keycloak
+    command: start-dev
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak_password
-      KC_HOSTNAME: localhost
       KC_HTTP_ENABLED: "true"
-      KC_PROXY: edge
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
     ports:
       - "8081:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - keycloak_data:/opt/keycloak/data
-    command: start-dev
     networks:
       - idp-network
 
-  # Redis for caching & tokens
   redis:
     image: redis:7-alpine
     container_name: idp-redis
@@ -54,15 +44,71 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - idp-network
 
-  # MongoDB for flexible document storage
+  backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: idp-backend
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: idp_db
+      DB_USER: idp_user
+      DB_PASSWORD: secure_password
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KEYCLOAK_URL: http://localhost:8081
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      KEYCLOAK_REALM: idp
+      KEYCLOAK_CLIENT_ID: idp-backend
+      KEYCLOAK_ALLOWED_AUDIENCES: idp-backend,idp-frontend
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-change-me}
+      OPENBAO_ADDR: http://openbao:8200
+      OPENBAO_TOKEN: ${OPENBAO_TOKEN:-dev-root-token}
+      OPENBAO_KV_MOUNT: secret
+      OPENBAO_PATH_PREFIX: idp
+      SECRET_STORE_PROVIDER: ${SECRET_STORE_PROVIDER:-openbao}
+      SECRET_STORE_REQUIRE_REMOTE: "true"
+      VAULT_ADDR: ${VAULT_ADDR:-}
+      VAULT_TOKEN: ${VAULT_TOKEN:-}
+      VAULT_KV_MOUNT: ${VAULT_KV_MOUNT:-secret}
+      VAULT_PATH_PREFIX: ${VAULT_PATH_PREFIX:-idp}
+      JWT_SECRET: ${JWT_SECRET:-change-this-in-production}
+      CORS_ORIGINS: http://localhost:8080,http://localhost:5173
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-change-me}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      redis:
+        condition: service_started
+      openbao:
+        condition: service_started
+    networks:
+      - idp-network
+
+  openbao:
+    image: openbao/openbao:latest
+    container_name: idp-openbao
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: dev-root-token
+      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    command: server -dev
+    ports:
+      - "8200:8200"
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - idp-network
+
   mongodb:
     image: mongo:7
     container_name: idp-mongodb
@@ -73,17 +119,28 @@ services:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    networks:
+      - idp-network
+
+  backup:
+    image: alpine:3.19
+    container_name: idp-backup
+    environment:
+      RETENTION_DAYS: "7"
+      TZ: UTC
+    volumes:
+      - postgres_data:/data/postgres_data:ro
+      - redis_data:/data/redis_data:ro
+      - mongodb_data:/data/mongodb_data:ro
+      - ./backups:/backups
+      - ./backup/backup.sh:/backup/backup.sh:ro
+    command: >-
+      sh -c "apk add --no-cache tar gzip tzdata; chmod +x /backup/backup.sh; echo '0 0 * * * /backup/backup.sh' > /etc/crontabs/root; crond -f -l 8"
     networks:
       - idp-network
 
 volumes:
   postgres_data:
-  keycloak_data:
   redis_data:
   mongodb_data:
 

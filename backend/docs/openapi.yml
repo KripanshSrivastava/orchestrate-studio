@@ -1,0 +1,1631 @@
+openapi: 3.1.0
+info:
+  title: Orchestrate Studio API
+  description: |
+    Internal Developer Platform (IDP) API for managing applications, workflows, and executions.
+    
+    ## Authentication
+    All API endpoints (except `/health`, `/ready`, `/live`) require Bearer token authentication via Keycloak JWT.
+    
+    Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <your_jwt_token>
+    ```
+    
+    ## Multi-Tenancy
+    - All resources are scoped to the user's organization (`org_id`)
+    - Requests automatically filter results by the user's org context
+    - Cross-org access is prevented at the database level
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: api-support@orchestrate.dev
+    url: https://orchestrate.dev/support
+  license:
+    name: Proprietary
+    url: https://orchestrate.dev/license
+  x-logo:
+    url: 'https://orchestrate.dev/logo.png'
+    altText: Orchestrate Studio Logo
+
+servers:
+  - url: http://localhost:3000
+    description: Local Development Server
+  - url: https://api.orchestrate.dev
+    description: Production Server
+  - url: https://staging-api.orchestrate.dev
+    description: Staging Server
+
+tags:
+  - name: Health
+    description: Service health and readiness checks
+  - name: Authentication
+    description: User authentication and token verification
+  - name: Applications
+    description: Application management (create, read, update, delete)
+  - name: Workflows
+    description: Workflow definitions and DAG management
+  - name: Executions
+    description: Workflow execution runs and status tracking
+  - name: Integrations
+    description: External service integrations and credentials
+
+paths:
+  /health:
+    get:
+      summary: Service health check (K8s liveness probe)
+      tags:
+        - Health
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /ready:
+    get:
+      summary: Service readiness check (K8s readiness probe)
+      tags:
+        - Health
+      operationId: getReadiness
+      responses:
+        '200':
+          description: Service is ready to serve traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+                  database:
+                    type: string
+                    enum: [connected, disconnected]
+                  timestamp:
+                    type: string
+                    format: date-time
+        '503':
+          description: Service dependencies not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /live:
+    get:
+      summary: Service liveness check (alternative to /health)
+      tags:
+        - Health
+      operationId: getLiveness
+      responses:
+        '200':
+          description: Service is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: alive
+
+  /api/auth/user:
+    get:
+      summary: Get current authenticated user
+      tags:
+        - Authentication
+      operationId: getCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User information retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/verify:
+    get:
+      summary: Verify JWT token validity
+      tags:
+        - Authentication
+      operationId: verifyToken
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Token invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/profile:
+    get:
+      summary: Get user profile details
+      tags:
+        - Authentication
+      operationId: getUserProfile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  profile:
+                    $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/auth/logout:
+    post:
+      summary: Logout user session
+      tags:
+        - Authentication
+      operationId: logoutUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+
+  /api/auth/signup:
+    post:
+      summary: Create new user account
+      tags:
+        - Authentication
+      operationId: signupUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  userId:
+                    type: string
+                  message:
+                    type: string
+        '400':
+          description: Invalid signup data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/applications:
+    get:
+      summary: List all applications in org
+      tags:
+        - Applications
+      operationId: listApplications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filter by application status
+          schema:
+            type: string
+            enum: [active, inactive, archived]
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          description: Result pagination offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Applications retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Application'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      summary: Create new application
+      tags:
+        - Applications
+      operationId: createApplication
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApplicationRequest'
+      responses:
+        '201':
+          description: Application created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/applications/{applicationId}:
+    get:
+      summary: Get application by ID
+      tags:
+        - Applications
+      operationId: getApplication
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          description: Application ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Application retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Application'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      summary: Update application
+      tags:
+        - Applications
+      operationId: updateApplication
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApplicationRequest'
+      responses:
+        '200':
+          description: Application updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      summary: Delete application
+      tags:
+        - Applications
+      operationId: deleteApplication
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Application deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /api/workflows:
+    get:
+      summary: List all workflows in org
+      tags:
+        - Workflows
+      operationId: listWorkflows
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: applicationId
+          in: query
+          description: Filter by application ID
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by workflow status
+          schema:
+            type: string
+            enum: [draft, published, deprecated]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Workflows retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Workflow'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      summary: Create new workflow
+      tags:
+        - Workflows
+      operationId: createWorkflow
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkflowRequest'
+      responses:
+        '201':
+          description: Workflow created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Workflow'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/workflows/{workflowId}:
+    get:
+      summary: Get workflow by ID
+      tags:
+        - Workflows
+      operationId: getWorkflow
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Workflow retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Workflow'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      summary: Update workflow DAG and metadata
+      tags:
+        - Workflows
+      operationId: updateWorkflow
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkflowRequest'
+      responses:
+        '200':
+          description: Workflow updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Workflow'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      summary: Delete workflow
+      tags:
+        - Workflows
+      operationId: deleteWorkflow
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Workflow deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /api/workflows/{workflowId}/execute:
+    post:
+      summary: Execute workflow
+      tags:
+        - Workflows
+      operationId: executeWorkflow
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Workflow execution triggered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      run_id:
+                        type: string
+                        description: Execution run identifier
+                        example: 6c1b0a3f-4d93-4c29-9d8f-0e2d6a5e1b7a
+                      workflow_id:
+                        type: string
+                        description: Workflow identifier
+                        example: 3a8a0c2f-1f8c-4d13-9b6a-6e2d6a4c7f2e
+                      status:
+                        type: string
+                        enum: [pending]
+                        example: pending
+                  traceId:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /api/executions:
+    get:
+      summary: List workflow executions in org
+      tags:
+        - Executions
+      operationId: listExecutions
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: workflowId
+          in: query
+          description: Filter by workflow ID
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by execution status
+          schema:
+            type: string
+            enum: [pending, running, success, failed]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Executions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Execution'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      summary: Trigger workflow execution
+      tags:
+        - Executions
+      operationId: createExecution
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExecutionRequest'
+      responses:
+        '201':
+          description: Execution created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Execution'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /api/executions/{executionId}:
+    get:
+      summary: Get execution by ID with logs and metrics
+      tags:
+        - Executions
+      operationId: getExecution
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: executionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Execution retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/ExecutionDetail'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /api/executions/{executionId}/cancel:
+    post:
+      summary: Cancel running execution
+      tags:
+        - Executions
+      operationId: cancelExecution
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: executionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Execution cancelled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Execution not in running state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Keycloak JWT bearer token
+
+  schemas:
+    # ========================================================================
+    # User and Authentication Schemas
+    # ========================================================================
+
+    User:
+      type: object
+      description: Authenticated user information from JWT token
+      properties:
+        id:
+          type: string
+          description: User ID (sub claim from JWT)
+          example: 550e8400-e29b-41d4-a716-446655440000
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: user@orchestrate.dev
+        name:
+          type: string
+          description: User full name
+          example: John Doe
+        preferred_username:
+          type: string
+          description: Username (from preferred_username claim)
+          example: john.doe
+        org_id:
+          type: string
+          description: Organization ID for multi-tenant isolation
+          example: org-acme-corp
+
+    UserProfile:
+      type: object
+      description: Extended user profile information
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        email:
+          type: string
+          format: email
+          example: user@orchestrate.dev
+        name:
+          type: string
+          example: John Doe
+        username:
+          type: string
+          example: john.doe
+
+    SignupRequest:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - email
+        - password
+        - confirmPassword
+      properties:
+        firstName:
+          type: string
+          description: User first name
+          minLength: 1
+          maxLength: 100
+          example: John
+        lastName:
+          type: string
+          description: User last name
+          minLength: 1
+          maxLength: 100
+          example: Doe
+        email:
+          type: string
+          format: email
+          description: User email (must be unique)
+          example: john.doe@example.com
+        password:
+          type: string
+          format: password
+          description: Account password (minimum 8 characters, 1 uppercase, 1 number, 1 special char)
+          minLength: 8
+          example: SecurePass123!
+        confirmPassword:
+          type: string
+          format: password
+          description: Password confirmation (must match password)
+          example: SecurePass123!
+
+    # ========================================================================
+    # Application Schema
+    # ========================================================================
+
+    Application:
+      type: object
+      description: |
+        Represents an application within the platform.
+        Applications are containers for workflows and are scoped to an organization.
+      required:
+        - id
+        - org_id
+        - name
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: Unique application identifier
+          example: app-prod-platform-01
+        org_id:
+          type: string
+          description: Organization ID (multi-tenant isolation)
+          example: org-acme-corp
+        name:
+          type: string
+          description: Application name (unique within org)
+          minLength: 1
+          maxLength: 255
+          example: Production Platform
+        description:
+          type: string
+          description: Application description
+          maxLength: 1000
+          nullable: true
+          example: Main application for production deployments
+        status:
+          type: string
+          description: Application lifecycle status
+          enum: [active, inactive, archived]
+          example: active
+        metadata:
+          type: object
+          description: Custom metadata and tags
+          nullable: true
+          additionalProperties: true
+          example:
+            owner: platform-team
+            costCenter: ENG-001
+            environment: production
+        created_at:
+          type: string
+          format: date-time
+          description: RFC 3339 timestamp when application was created
+          example: '2024-01-15T10:30:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          description: RFC 3339 timestamp of last update
+          example: '2024-01-20T14:15:00Z'
+
+    CreateApplicationRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Application name
+          minLength: 1
+          maxLength: 255
+          example: My Production App
+        description:
+          type: string
+          description: Optional application description
+          maxLength: 1000
+          nullable: true
+          example: Handles production workloads
+        status:
+          type: string
+          description: Initial application status (defaults to 'active')
+          enum: [active, inactive, archived]
+          default: active
+
+    UpdateApplicationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive, archived]
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    # ========================================================================
+    # Workflow Schema
+    # ========================================================================
+
+    Workflow:
+      type: object
+      description: |
+        Represents a workflow (DAG-based pipeline).
+        Workflows define the sequence of steps to execute and belong to an application.
+      required:
+        - id
+        - org_id
+        - application_id
+        - name
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: Unique workflow identifier
+          example: wf-ci-cd-pipeline-001
+        org_id:
+          type: string
+          description: Organization ID (multi-tenant isolation)
+          example: org-acme-corp
+        application_id:
+          type: string
+          description: Parent application ID
+          example: app-prod-platform-01
+        name:
+          type: string
+          description: Workflow name (unique within application)
+          minLength: 1
+          maxLength: 255
+          example: CI/CD Pipeline
+        description:
+          type: string
+          description: Workflow description and purpose
+          maxLength: 1000
+          nullable: true
+          example: Automated build, test, and deploy to production
+        dag:
+          $ref: '#/components/schemas/DAG'
+        status:
+          type: string
+          description: Workflow publication status
+          enum: [draft, published, deprecated]
+          example: published
+        version:
+          type: integer
+          description: Workflow version number
+          example: 5
+        created_at:
+          type: string
+          format: date-time
+          example: '2024-01-15T10:30:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2024-01-20T14:15:00Z'
+
+    DAG:
+      type: object
+      description: |
+        Directed Acyclic Graph (DAG) defining workflow steps and connections.
+        Nodes represent steps/tasks, edges represent dependencies.
+      properties:
+        nodes:
+          type: array
+          description: Array of workflow nodes (steps)
+          items:
+            $ref: '#/components/schemas/DAGNode'
+          minItems: 1
+        edges:
+          type: array
+          description: Array of connections between nodes
+          items:
+            $ref: '#/components/schemas/DAGEdge'
+          default: []
+      required:
+        - nodes
+      additionalProperties: false
+
+    DAGNode:
+      type: object
+      description: Represents a single step/task in a workflow
+      required:
+        - id
+        - type
+      properties:
+        id:
+          type: string
+          description: Unique node identifier within workflow
+          example: node-build-001
+        type:
+          type: string
+          description: Node/tool type (e.g., 'GitHub', 'Docker', 'Kubernetes')
+          example: GitHub
+        label:
+          type: string
+          description: Display name for the node
+          example: Build Source Code
+        config:
+          type: object
+          description: Tool-specific configuration
+          additionalProperties: true
+          nullable: true
+          example:
+            repo: myapp
+            branch: main
+            action: push
+        position:
+          $ref: '#/components/schemas/NodePosition'
+          nullable: true
+
+    DAGEdge:
+      type: object
+      description: Connection between two nodes expressing dependency
+      required:
+        - id
+        - source
+        - target
+      properties:
+        id:
+          type: string
+          description: Unique edge identifier
+          example: edge-001
+        source:
+          type: string
+          description: Source node ID
+          example: node-build-001
+        target:
+          type: string
+          description: Target node ID
+          example: node-test-001
+        condition:
+          type: string
+          description: Optional execution condition (e.g., 'success', 'always')
+          enum: [success, failure, always]
+          nullable: true
+          example: success
+
+    NodePosition:
+      type: object
+      description: Canvas visualization position for a node
+      required:
+        - x
+        - y
+      properties:
+        x:
+          type: number
+          description: X coordinate on canvas
+          example: 100
+        y:
+          type: number
+          description: Y coordinate on canvas
+          example: 200
+
+    CreateWorkflowRequest:
+      type: object
+      required:
+        - application_id
+        - name
+        - dag
+      properties:
+        application_id:
+          type: string
+          description: Parent application ID
+          example: app-prod-platform-01
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Deploy Workflow
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        dag:
+          $ref: '#/components/schemas/DAG'
+        status:
+          type: string
+          enum: [draft, published]
+          default: draft
+
+    UpdateWorkflowRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        dag:
+          $ref: '#/components/schemas/DAG'
+        status:
+          type: string
+          enum: [draft, published, deprecated]
+
+    # ========================================================================
+    # Execution Schema
+    # ========================================================================
+
+    Execution:
+      type: object
+      description: |
+        Represents a single execution (run) of a workflow.
+        Tracks the status, timing, and outcome of workflow execution.
+      required:
+        - id
+        - org_id
+        - workflow_id
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: Unique execution identifier
+          example: exec-prod-001-20240120-001
+        org_id:
+          type: string
+          description: Organization ID (multi-tenant isolation)
+          example: org-acme-corp
+        workflow_id:
+          type: string
+          description: Associated workflow ID
+          example: wf-ci-cd-pipeline-001
+        status:
+          type: string
+          description: Current execution status
+          enum: [pending, running, success, failed]
+          example: running
+        started_at:
+          type: string
+          format: date-time
+          description: When execution started (null if pending)
+          nullable: true
+          example: '2024-01-20T14:20:00Z'
+        completed_at:
+          type: string
+          format: date-time
+          description: When execution finished (null unless success or failed)
+          nullable: true
+          example: '2024-01-20T14:25:30Z'
+        duration_seconds:
+          type: number
+          description: Execution duration in seconds (null if still running)
+          nullable: true
+          example: 330
+        triggered_by:
+          type: string
+          description: User ID or system identifier that triggered execution
+          example: user@orchestrate.dev
+        input_variables:
+          type: object
+          description: Input parameters passed to workflow
+          additionalProperties: true
+          nullable: true
+          example:
+            environment: production
+            deploymentVersion: v2.1.0
+        created_at:
+          type: string
+          format: date-time
+          example: '2024-01-20T14:15:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2024-01-20T14:25:30Z'
+
+    ExecutionDetail:
+      allOf:
+        - $ref: '#/components/schemas/Execution'
+        - type: object
+          properties:
+            logs:
+              type: array
+              description: Execution logs (if available)
+              items:
+                $ref: '#/components/schemas/ExecutionLog'
+              nullable: true
+            metrics:
+              type: array
+              description: Performance metrics from execution
+              items:
+                $ref: '#/components/schemas/ExecutionMetric'
+              nullable: true
+            step_results:
+              type: array
+              description: Results from individual workflow steps
+              items:
+                $ref: '#/components/schemas/StepResult'
+              nullable: true
+            error_details:
+              type: object
+              description: Error information if execution failed
+              nullable: true
+              properties:
+                step_id:
+                  type: string
+                  description: Step where failure occurred
+                message:
+                  type: string
+                  description: Error message
+                stack_trace:
+                  type: string
+                  description: Error stack trace (for debugging)
+                  nullable: true
+
+    ExecutionLog:
+      type: object
+      description: Log entry from workflow execution
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2024-01-20T14:20:15Z'
+        level:
+          type: string
+          enum: [debug, info, warn, error]
+          example: info
+        source:
+          type: string
+          description: Step/component that generated log
+          example: node-build-001
+        message:
+          type: string
+          example: Build completed successfully
+
+    ExecutionMetric:
+      type: object
+      description: Performance metric from execution
+      properties:
+        name:
+          type: string
+          description: Metric name
+          example: build_time_seconds
+        value:
+          type: number
+          example: 45.3
+        unit:
+          type: string
+          example: seconds
+        timestamp:
+          type: string
+          format: date-time
+
+    StepResult:
+      type: object
+      description: Result from individual workflow step execution
+      properties:
+        step_id:
+          type: string
+          example: node-build-001
+        step_name:
+          type: string
+          example: Build Docker Image
+        status:
+          type: string
+          enum: [pending, running, success, failed]
+          example: success
+        output:
+          type: object
+          description: Step output data
+          additionalProperties: true
+          nullable: true
+          example:
+            imageId: sha256:abc123def456
+            imageName: myapp:v2.1.0
+        error:
+          type: string
+          description: Error message if step failed
+          nullable: true
+
+    CreateExecutionRequest:
+      type: object
+      required:
+        - workflow_id
+      properties:
+        workflow_id:
+          type: string
+          description: Workflow to execute
+          example: wf-ci-cd-pipeline-001
+        input_variables:
+          type: object
+          description: Input parameters for workflow
+          additionalProperties: true
+          nullable: true
+          example:
+            environment: staging
+            notifyOnComplete: true
+
+    # ========================================================================
+    # Error Response Schema
+    # ========================================================================
+
+    ErrorResponse:
+      type: object
+      description: |
+        Standard error response format for all API errors.
+        All error responses use this consistent structure.
+      required:
+        - success
+        - error
+        - message
+      properties:
+        success:
+          type: boolean
+          description: Always false for error responses
+          example: false
+        error:
+          type: object
+          required:
+            - code
+            - type
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+              enum:
+                - INVALID_REQUEST
+                - UNAUTHORIZED
+                - FORBIDDEN
+                - NOT_FOUND
+                - CONFLICT
+                - INTERNAL_ERROR
+                - SERVICE_UNAVAILABLE
+              example: UNAUTHORIZED
+            type:
+              type: string
+              description: Error category
+              enum:
+                - authentication
+                - authorization
+                - validation
+                - not_found
+                - conflict
+                - business_logic
+                - system
+              example: authentication
+            message:
+              type: string
+              description: Human-readable error message
+              example: Invalid or expired JWT token
+        message:
+          type: string
+          description: Detailed error description
+          example: The provided JWT token has expired. Please obtain a new token from the authentication endpoint.
+        trace_id:
+          type: string
+          description: Unique request trace ID for support debugging
+          example: 1705756200000-7a8b9c
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+          description: When error occurred
+          example: '2024-01-20T14:15:00Z'
+        details:
+          type: object
+          description: Additional error context (varies by error type)
+          additionalProperties: true
+          nullable: true
+          example:
+            field: email
+            expected: valid email format
+            received: invalid-email
+
+  responses:
+    # ========================================================================
+    # Common Response Templates
+    # ========================================================================
+
+    UnauthorizedError:
+      description: Unauthorized - missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: UNAUTHORIZED
+              type: authentication
+              message: Missing or invalid JWT token
+            message: Please provide a valid Bearer token in the Authorization header
+            trace_id: 1705756200000-abc123
+            timestamp: '2024-01-20T14:15:00Z'
+
+    ForbiddenError:
+      description: Forbidden - insufficient permissions for this operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: FORBIDDEN
+              type: authorization
+              message: Insufficient permissions
+            message: Your organization does not have access to this resource
+            trace_id: 1705756200000-abc123
+            timestamp: '2024-01-20T14:15:00Z'
+
+    BadRequestError:
+      description: Bad request - invalid input or parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: INVALID_REQUEST
+              type: validation
+              message: Validation failed
+            message: Request validation failed
+            details:
+              field: name
+              error: required field
+            trace_id: 1705756200000-abc123
+            timestamp: '2024-01-20T14:15:00Z'
+
+    NotFoundError:
+      description: Not found - resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              type: not_found
+              message: Application not found
+            message: The requested application with ID 'app-invalid-123' was not found in your organization
+            trace_id: 1705756200000-abc123
+            timestamp: '2024-01-20T14:15:00Z'
+
+    ConflictError:
+      description: Conflict - resource already exists or operation conflicts with current state
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: CONFLICT
+              type: conflict
+              message: Application already exists
+            message: An application with the name 'My App' already exists in your organization
+            trace_id: 1705756200000-abc123
+            timestamp: '2024-01-20T14:15:00Z'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: INTERNAL_ERROR
+              type: system
+              message: Internal server error
+            message: An unexpected error occurred. Please contact support.
+            trace_id: 1705756200000-abc123
+            timestamp: '2024-01-20T14:15:00Z'
+
+x-error-responses:
+  UnauthorizedError:
+    description: |
+      **401 Unauthorized**
+      The request lacks valid authentication credentials. This occurs when:
+      - No Authorization header provided
+      - JWT token is missing, malformed, or expired
+      - Token signature is invalid
+      
+      **Solution:** Obtain a fresh JWT token from the `/api/auth/` endpoint and include it as:
+      ```
+      Authorization: Bearer <jwt_token>
+      ```
+
+  ForbiddenError:
+    description: |
+      **403 Forbidden**
+      The authenticated user lacks permission to access this resource. This occurs when:
+      - Accessing resources from a different organization (org_id mismatch)
+      - User role insufficient for operation
+      - Resource access denied by policy
+      
+      **Solution:** Verify your organization context or contact your admin.
+
+  NotFoundError:
+    description: |
+      **404 Not Found**
+      The requested resource does not exist or was deleted. This occurs when:
+      - Application, Workflow, or Execution ID is invalid
+      - Resource belongs to a different organization
+      - Resource was previously deleted
+      
+      **Solution:** Verify the resource ID and ensure it belongs to your organization.
+
+  ConflictError:
+    description: |
+      **409 Conflict**
+      The request conflicts with resource state or existing data. This occurs when:
+      - Creating resource with duplicate name within organization
+      - Updating resource that has been modified elsewhere
+      - Attempting operation on resource in incompatible state
+      
+      **Solution:** Resolve the conflict and retry the request.

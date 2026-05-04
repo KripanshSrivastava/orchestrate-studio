@@ -1,8 +1,20 @@
+import dotenv from 'dotenv';
+
+dotenv.config();
+
 // Keycloak Configuration
+const defaultAudience = process.env.KEYCLOAK_CLIENT_ID || 'idp-backend';
+const allowedAudiences = (process.env.KEYCLOAK_ALLOWED_AUDIENCES || defaultAudience)
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
 export const KEYCLOAK_CONFIG = {
-  url: process.env.KEYCLOAK_URL || 'http://localhost:8080',
+  url: process.env.KEYCLOAK_URL || 'http://localhost:8081',
+  internalUrl: process.env.KEYCLOAK_INTERNAL_URL || process.env.KEYCLOAK_URL || 'http://localhost:8081',
   realm: process.env.KEYCLOAK_REALM || 'idp',
-  clientId: process.env.KEYCLOAK_CLIENT_ID || 'idp-backend',
+  clientId: defaultAudience,
+  allowedAudiences,
 };
 
 // Database Configuration

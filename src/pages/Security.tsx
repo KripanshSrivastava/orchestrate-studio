@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Shield, AlertTriangle, Bug, FileWarning, CheckCircle2 } from "lucide-react";
 
 const vulnSummary = [
@@ -32,6 +33,10 @@ const typeIcon: Record<string, string> = {
 };
 
 export default function Security() {
+  const [severity, setSeverity] = useState("all");
+  const [rows, setRows] = useState(findings);
+  const visibleFindings = rows.filter((finding) => severity === "all" || finding.severity === severity);
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -63,8 +68,15 @@ export default function Security() {
 
       {/* Findings Table */}
       <div className="glass-panel overflow-hidden">
-        <div className="p-4 border-b border-border">
+        <div className="p-4 border-b border-border flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-foreground">Active Findings</h3>
+          <select value={severity} onChange={(e) => setSeverity(e.target.value)} className="rounded-md bg-secondary px-3 py-1.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring">
+            <option value="all">All severities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
         </div>
         <table className="w-full text-sm">
           <thead>
@@ -74,10 +86,11 @@ export default function Security() {
               <th className="text-left py-3 px-4 font-medium">Severity</th>
               <th className="text-left py-3 px-4 font-medium">Location</th>
               <th className="text-left py-3 px-4 font-medium">Scanner</th>
+              <th className="text-right py-3 px-4 font-medium">Action</th>
             </tr>
           </thead>
           <tbody>
-            {findings.map((f, i) => {
+            {visibleFindings.map((f, i) => {
               const s = severityStyle[f.severity];
               return (
                 <tr key={i} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
@@ -88,6 +101,11 @@ export default function Security() {
                   </td>
                   <td className="py-3 px-4 font-mono text-xs text-muted-foreground">{f.file}</td>
                   <td className="py-3 px-4 text-xs text-muted-foreground">{f.tool}</td>
+                  <td className="py-3 px-4 text-right">
+                    <button onClick={() => setRows((current) => current.filter((item) => item.title !== f.title))} className="rounded-md bg-secondary px-2 py-1 text-xs text-foreground hover:bg-accent">
+                      Mark resolved
+                    </button>
+                  </td>
                 </tr>
               );
             })}

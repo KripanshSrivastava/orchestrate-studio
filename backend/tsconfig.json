@@ -4,7 +4,7 @@
     "module": "ESNext",
     "lib": ["ES2020"],
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "./",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -20,8 +20,9 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "ignoreDeprecations": "5.0"
   },
-  "include": ["src/**/*"],
+  "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

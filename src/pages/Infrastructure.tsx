@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Server, Cpu, HardDrive, MemoryStick, Cloud, ArrowUpDown, Settings } from "lucide-react";
 
 const resources = [
@@ -29,6 +30,8 @@ const tfStatus: Record<string, { badge: string; label: string }> = {
 };
 
 export default function Infrastructure() {
+  const [modules, setModules] = useState(terraformModules);
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div>
@@ -75,7 +78,7 @@ export default function Infrastructure() {
             </tr>
           </thead>
           <tbody>
-            {terraformModules.map((m) => (
+            {modules.map((m) => (
               <tr key={m.name} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
                 <td className="py-3 px-4 font-mono text-xs text-foreground font-medium">{m.name}</td>
                 <td className="py-3 px-4">
@@ -84,7 +87,16 @@ export default function Infrastructure() {
                 <td className="py-3 px-4 text-xs text-muted-foreground">{m.resources}</td>
                 <td className="py-3 px-4 text-xs text-muted-foreground">{m.lastRun}</td>
                 <td className="py-3 px-4">
-                  {m.drift ? <span className="text-xs text-warning font-medium">⚠ Drift detected</span> : <span className="text-xs text-success">✓ In sync</span>}
+                  {m.drift ? (
+                    <button
+                      onClick={() => setModules((current) => current.map((module) => module.name === m.name ? { ...module, drift: false, lastRun: "now" } : module))}
+                      className="rounded-md bg-warning/15 px-2 py-1 text-xs font-medium text-warning hover:bg-warning/25"
+                    >
+                      Reconcile drift
+                    </button>
+                  ) : (
+                    <span className="text-xs text-success">In sync</span>
+                  )}
                 </td>
               </tr>
             ))}
