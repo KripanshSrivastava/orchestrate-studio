@@ -145,6 +145,13 @@ class TerraformRunnerService {
       { command: 'terraform', args: ['apply', '-input=false', '-auto-approve', '-no-color'] },
     ]);
   }
+
+  async destroy(context: TerraformRunContext): Promise<TerraformRunResult> {
+    return this.runAcrossModules(context, [
+      { command: 'terraform', args: ['init', '-input=false'] },
+      { command: 'terraform', args: ['destroy', '-input=false', '-auto-approve', '-no-color'] },
+    ]);
+  }
 }
 
 export default new TerraformRunnerService();

@@ -187,7 +187,12 @@ export default function Settings() {
     setActionError("");
 
     try {
-      await connectIntegration(integration.id, values);
+      const state = await connectIntegration(integration.id, values);
+      if (!state.connected) {
+        setActionError(state.verification?.message || `${integration.name} details were saved, but verification did not connect.`);
+        return;
+      }
+
       setEditingId(null);
       setDraftValues({});
     } catch (err) {
@@ -822,6 +827,7 @@ export default function Settings() {
                   <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                     {group === "CI Tools" ? <Play className="w-4 h-4 text-primary" /> :
                      group === "Git Providers" ? <GitBranch className="w-4 h-4 text-primary" /> :
+                     group === "Cloud Providers" ? <Globe className="w-4 h-4 text-primary" /> :
                      <Box className="w-4 h-4 text-primary" />}
                     {group}
                   </h3>
@@ -877,22 +883,16 @@ export default function Settings() {
                             )}
                           </div>
 
-                          {integration.id === "github" && integrationState.verification && (
+                          {integration.id === "github" && integrationState.connected && integrationState.verification && (
                             <div
-                              className={`mt-3 rounded-md border p-3 ${
-                                integrationState.verification.healthy
-                                  ? "border-success/30 bg-success/10"
-                                  : "border-warning/30 bg-warning/10"
-                              }`}
+                              className="mt-3 rounded-md border border-success/30 bg-success/10 p-3"
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <div>
                                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                                     GitHub SDK Status
                                   </p>
-                                  <p className="text-sm text-foreground mt-1">
-                                    {integrationState.verification.healthy ? integrationState.verification.message : integrationState.verification.message}
-                                  </p>
+                                  <p className="text-sm text-foreground mt-1">{integrationState.verification.message}</p>
                                 </div>
                                 <button
                                   onClick={refreshIntegrations}
@@ -937,13 +937,9 @@ export default function Settings() {
                             </div>
                           )}
 
-                          {integration.id === "github-actions" && integrationState.verification && (
+                          {integration.id === "github-actions" && integrationState.connected && integrationState.verification && (
                             <div
-                              className={`mt-3 rounded-md border p-3 ${
-                                integrationState.verification.healthy
-                                  ? "border-success/30 bg-success/10"
-                                  : "border-warning/30 bg-warning/10"
-                              }`}
+                              className="mt-3 rounded-md border border-success/30 bg-success/10 p-3"
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <div>
@@ -1000,13 +996,9 @@ export default function Settings() {
                             </div>
                           )}
 
-                          {!["github", "github-actions"].includes(integration.id) && integrationState.verification && (
+                          {!["github", "github-actions"].includes(integration.id) && integrationState.connected && integrationState.verification && (
                             <div
-                              className={`mt-3 rounded-md border p-3 ${
-                                integrationState.verification.healthy
-                                  ? "border-success/30 bg-success/10"
-                                  : "border-warning/30 bg-warning/10"
-                              }`}
+                              className="mt-3 rounded-md border border-success/30 bg-success/10 p-3"
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <div>

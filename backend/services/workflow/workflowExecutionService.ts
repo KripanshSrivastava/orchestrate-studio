@@ -103,3 +103,20 @@ export const getExecutionRun = async (id: string): Promise<ExecutionRunEntity | 
 
   return normalizeExecutionRun(record);
 };
+
+export const getAllExecutionRuns = async (): Promise<(ExecutionRunEntity & { workflow_name?: string })[]> => {
+  const result = await query<ExecutionRunRecord & { workflow_name?: string }>(
+    `
+    SELECT e.id, e.workflow_id, e.status, e.input, e.output, e.error, e.started_at, e.finished_at, w.name as workflow_name
+    FROM execution_runs e
+    LEFT JOIN workflows w ON e.workflow_id = w.id
+    ORDER BY e.started_at DESC
+    LIMIT 50
+    `
+  );
+
+  return result.rows.map((row) => ({
+    ...normalizeExecutionRun(row),
+    workflow_name: row.workflow_name,
+  }));
+};

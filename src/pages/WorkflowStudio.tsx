@@ -11,6 +11,7 @@ import {
   History,
   Cpu,
   Layers,
+  Bell,
   Search,
   Trash2,
   PlayCircle,
@@ -48,6 +49,8 @@ import { NodeToolbar } from "@reactflow/node-toolbar";
 import "reactflow/dist/style.css";
 import { nodeLibrary, nodeIconMap } from "@/data/nodeLibrary";
 import useIntegrations from "@/hooks/useIntegrations";
+import { apiPost } from "@/lib/apiClient";
+import { toast } from "sonner";
 import {
   ALIGN_TOLERANCE,
   AlignmentGuides,
@@ -64,6 +67,33 @@ import {
   resolveCollision,
   useWorkflowStudioStore,
 } from "@/stores/workflowStudioStore";
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
+type RunLogLevel = "info" | "success" | "warning" | "error";
+
+type RunLogEntry = {
+  id: string;
+  time: string;
+  level: RunLogLevel;
+  scope: string;
+  message: string;
+};
+
+const logTone: Record<RunLogLevel, string> = {
+  info: "text-info",
+  success: "text-success",
+  warning: "text-warning",
+  error: "text-destructive",
+};
+
+const formatLogTime = () =>
+  new Intl.DateTimeFormat("en", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date());
 
 const statusColor: Record<NodeStatus, string> = {
   idle: "border-node-border",
@@ -262,11 +292,26 @@ function WorkflowStudioInner() {
   const loadStack = useWorkflowStudioStore((state) => state.loadStack);
   const setNodeStatus = useWorkflowStudioStore((state) => state.setNodeStatus);
   const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuides | null>(null);
-  const [configTab, setConfigTab] = useState<"config" | "logs" | "metrics" | "history">("config");
+  const [configTab, setConfigTab] = useState<"config" | "logs" | "metrics" | "alerts" | "history">("logs");
   const [librarySearch, setLibrarySearch] = useState("");
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [lastRunStartedAt, setLastRunStartedAt] = useState<Date | null>(null);
+  const [lastRunFinishedAt, setLastRunFinishedAt] = useState<Date | null>(null);
+  const [lastRunId, setLastRunId] = useState<string | null>(null);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [runLogs, setRunLogs] = useState<RunLogEntry[]>([
+    {
+      id: "initial-log",
+      time: formatLogTime(),
+      level: "info",
+      scope: "pipeline",
+      message: "Observability ready. Run the pipeline to stream dispatch and stage events.",
+    },
+  ]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(nodeLibrary.map((category) => category.category)));
   const flowWrapperRef = useRef<HTMLDivElement>(null);
   const { getNodeIntegration } = useIntegrations();
+  const githubIntegration = getNodeIntegration("github");
 
   const selectedNode = useMemo(
     () => (selectedNodeIds.length === 1 ? nodes.find((node) => node.id === selectedNodeIds[0]) ?? null : null),
@@ -275,6 +320,86 @@ function WorkflowStudioInner() {
 
   const selectedCount = selectedNodeIds.length + selectedEdgeIds.length;
 
+  const appendRunLog = useCallback((level: RunLogLevel, message: string, scope = "pipeline") => {
+    const entry: RunLogEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      time: formatLogTime(),
+      level,
+      scope,
+      message,
+    };
+
+    setRunLogs((current) => [...current.slice(-119), entry]);
+  }, []);
+
+  const pipelineMetrics = useMemo(() => {
+    const total = nodes.length;
+    const success = nodes.filter((node) => node.data.status === "success").length;
+    const running = nodes.filter((node) => node.data.status === "running").length;
+    const failed = nodes.filter((node) => node.data.status === "failed").length;
+    const blocked = nodes.filter((node) => node.data.status === "blocked").length;
+    const idle = nodes.filter((node) => node.data.status === "idle").length;
+    const durationMs = lastRunStartedAt
+      ? ((lastRunFinishedAt ?? new Date()).getTime() - lastRunStartedAt.getTime())
+      : 0;
+
+    return {
+      total,
+      success,
+      running,
+      failed,
+      blocked,
+      idle,
+      edgeCount: edges.length,
+      successRate: total > 0 ? Math.round((success / total) * 100) : 0,
+      durationSeconds: Math.max(0, Math.round(durationMs / 1000)),
+    };
+  }, [edges.length, lastRunFinishedAt, lastRunStartedAt, nodes]);
+
+  const pipelineAlerts = useMemo(() => {
+    const alerts: Array<{ id: string; severity: "warning" | "error"; title: string; detail: string }> = [];
+
+    if (dispatchError) {
+      alerts.push({
+        id: "dispatch-error",
+        severity: "error",
+        title: "GitHub dispatch failed",
+        detail: dispatchError,
+      });
+    }
+
+    nodes.forEach((node) => {
+      if (node.data.status === "failed" || node.data.status === "blocked") {
+        alerts.push({
+          id: node.id,
+          severity: node.data.status === "failed" ? "error" : "warning",
+          title: `${node.data.label} is ${node.data.status}`,
+          detail: `${node.data.category} stage needs attention before this run is healthy.`,
+        });
+      }
+    });
+
+    if (!githubIntegration?.state.connected) {
+      alerts.push({
+        id: "github-not-connected",
+        severity: "warning",
+        title: "GitHub integration not connected",
+        detail: "Connect GitHub and GitHub Actions in Settings before expecting remote workflow runs.",
+      });
+    }
+
+    return alerts;
+  }, [dispatchError, githubIntegration?.state.connected, nodes]);
+
+  const visibleLogs = useMemo(() => {
+    if (!selectedNode) {
+      return runLogs;
+    }
+
+    const scopedLogs = runLogs.filter((entry) => entry.scope === "pipeline" || entry.scope === selectedNode.id);
+    return scopedLogs.length > 0 ? scopedLogs : runLogs;
+  }, [runLogs, selectedNode]);
+
   const runPipelineSimulation = useCallback(async () => {
     const orderedNodes = [...nodes].sort((left, right) => {
       if (left.position.x !== right.position.x) return left.position.x - right.position.x;
@@ -282,11 +407,79 @@ function WorkflowStudioInner() {
     });
 
     for (const node of orderedNodes) {
+      appendRunLog("info", `Starting ${node.data.label}`, node.id);
       setNodeStatus(node.id, "running");
       await new Promise((resolve) => window.setTimeout(resolve, 180));
       setNodeStatus(node.id, "success");
+      appendRunLog("success", `${node.data.label} completed`, node.id);
     }
-  }, [nodes, setNodeStatus]);
+  }, [appendRunLog, nodes, setNodeStatus]);
+
+  const buildDispatchDefinition = useCallback(
+    () => ({
+      nodes: nodes.map((node) => ({
+        id: node.id,
+        type: node.data.nodeType,
+        inputs: {
+          label: node.data.label,
+          category: node.data.category,
+        },
+      })),
+      edges: edges.map((edge) => ({
+        from: edge.source,
+        to: edge.target,
+      })),
+    }),
+    [edges, nodes]
+  );
+
+  const dispatchWorkflowToGithub = useCallback(async () => {
+    if (isDispatching) {
+      return;
+    }
+
+    setIsDispatching(true);
+    setDispatchError(null);
+    setLastRunStartedAt(new Date());
+    setLastRunFinishedAt(null);
+    setLastRunId(null);
+    appendRunLog("info", "Creating workflow from current canvas");
+
+    try {
+      const workflowResponse = await apiPost<{
+        success: boolean;
+        data: { id: string };
+      }>(`${API_BASE}/api/workflows`, {
+        name: `Local Load Stack ${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-")}`,
+        description: "Dispatched from Workflow Studio local load stack.",
+        definition: buildDispatchDefinition(),
+      });
+
+      const workflowId = workflowResponse.data.id;
+      setLastRunId(workflowId);
+      appendRunLog("success", `Workflow saved: ${workflowId}`);
+      appendRunLog("info", "Dispatching GitHub Actions workflow");
+
+      await apiPost(`${API_BASE}/api/workflows/${workflowId}/execute`, {
+        environment: "local",
+        run_load_test: nodes.some((node) => node.data.nodeType === "load-test-k6"),
+      });
+
+      appendRunLog("success", "GitHub Actions dispatch accepted");
+      toast.success("Pipeline dispatched to GitHub Actions");
+      await runPipelineSimulation();
+      setLastRunFinishedAt(new Date());
+      appendRunLog("success", "Pipeline simulation completed");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to dispatch pipeline";
+      setDispatchError(message);
+      setLastRunFinishedAt(new Date());
+      appendRunLog("error", message);
+      toast.error(message);
+    } finally {
+      setIsDispatching(false);
+    }
+  }, [appendRunLog, buildDispatchDefinition, isDispatching, nodes, runPipelineSimulation]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -322,8 +515,6 @@ function WorkflowStudioInner() {
 
   const nodeTypes = useMemo(() => ({ pipeline: PipelineNode }), []);
   const edgeTypes = useMemo(() => ({ workflow: WorkflowEdge }), []);
-  const githubIntegration = getNodeIntegration("github");
-
   const isValidConnection = useCallback(
     (connection: Connection) => {
       if (!connection.source || !connection.target) return false;
@@ -587,7 +778,7 @@ function WorkflowStudioInner() {
 
       <div className="flex-1 relative flex flex-col">
         <div className="h-10 border-b border-border bg-card/60 backdrop-blur flex items-center px-4 gap-2">
-          <span className="text-sm font-semibold text-foreground">DevOps Pipeline — Full Lifecycle</span>
+          <span className="text-sm font-semibold text-foreground">Local Load Stack Pipeline</span>
           {githubIntegration?.state.verification?.repository && (
             <span className="text-[11px] text-muted-foreground truncate max-w-[360px]">
               GitHub SDK: {githubIntegration.state.verification.repository.fullName} · {githubIntegration.state.verification.repository.defaultBranch}
@@ -595,16 +786,21 @@ function WorkflowStudioInner() {
           )}
           <div className="flex-1" />
           <button
-            onClick={loadStack}
+            onClick={() => {
+              loadStack();
+              appendRunLog("info", "Loaded local stack template");
+              setDispatchError(null);
+            }}
             className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-info/15 text-info text-xs font-medium hover:bg-info/25 transition-colors"
           >
             Load Stack
           </button>
           <button
-            onClick={runPipelineSimulation}
+            onClick={dispatchWorkflowToGithub}
+            disabled={isDispatching}
             className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-success/15 text-success text-xs font-medium hover:bg-success/25 transition-colors"
           >
-            <Play className="w-3.5 h-3.5" /> Run Pipeline
+            <Play className="w-3.5 h-3.5" /> {isDispatching ? "Dispatching..." : "Run Pipeline"}
           </button>
           <button className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-destructive/15 text-destructive text-xs font-medium hover:bg-destructive/25 transition-colors">
             <Square className="w-3.5 h-3.5" /> Stop
@@ -714,25 +910,28 @@ function WorkflowStudioInner() {
         </div>
       </div>
 
-      {selectedNode && (
-        <div className="w-80 border-l border-border bg-card overflow-y-auto shrink-0 animate-slide-in-left">
+      <div className="w-80 border-l border-border bg-card overflow-y-auto shrink-0 animate-slide-in-left">
           <div className="p-3 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
               {(() => {
-                const Icon = nodeIconMap[selectedNode.data.icon];
+                const Icon = selectedNode ? nodeIconMap[selectedNode.data.icon] : BarChart3;
                 return <Icon className="w-4 h-4 text-primary" />;
               })()}
-              <span className="text-sm font-semibold text-foreground">{selectedNode.data.label}</span>
+              <span className="text-sm font-semibold text-foreground">
+                {selectedNode ? selectedNode.data.label : "Pipeline Observability"}
+              </span>
             </div>
             <div className="flex items-center gap-1">
-              <button
-                onClick={deleteSelection}
-                className="p-1 hover:bg-destructive/15 rounded transition-colors"
-                aria-label="Delete node"
-                title="Delete node"
-              >
-                <Trash2 className="w-4 h-4 text-destructive" />
-              </button>
+              {selectedNode && (
+                <button
+                  onClick={deleteSelection}
+                  className="p-1 hover:bg-destructive/15 rounded transition-colors"
+                  aria-label="Delete node"
+                  title="Delete node"
+                >
+                  <Trash2 className="w-4 h-4 text-destructive" />
+                </button>
+              )}
               <button onClick={clearSelection} className="p-1 hover:bg-accent rounded transition-colors">
                 <X className="w-4 h-4 text-muted-foreground" />
               </button>
@@ -744,6 +943,7 @@ function WorkflowStudioInner() {
               { key: "config", label: "Config", icon: Settings },
               { key: "logs", label: "Logs", icon: FileText },
               { key: "metrics", label: "Metrics", icon: BarChart3 },
+              { key: "alerts", label: "Alerts", icon: Bell },
               { key: "history", label: "History", icon: History },
             ] as const).map((tab) => (
               <button
@@ -762,7 +962,7 @@ function WorkflowStudioInner() {
           </div>
 
           <div className="p-4 space-y-4">
-            {configTab === "config" && (
+            {configTab === "config" && (selectedNode ? (
               <>
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">Node Type</label>
@@ -840,37 +1040,91 @@ function WorkflowStudioInner() {
                   );
                 })()}
               </>
-            )}
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Run ID</label>
+                  <p className="text-sm text-foreground mt-1 font-mono">{lastRunId || "No run dispatched yet"}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Pipeline Shape</label>
+                  <p className="text-sm text-foreground mt-1">
+                    {pipelineMetrics.total} nodes, {pipelineMetrics.edgeCount} connections
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Current State</label>
+                  <p className="text-sm text-foreground mt-1">
+                    {isDispatching
+                      ? "Dispatching"
+                      : pipelineMetrics.failed > 0
+                      ? "Needs attention"
+                      : pipelineMetrics.success === pipelineMetrics.total && pipelineMetrics.total > 0
+                      ? "Successful"
+                      : "Ready"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => navigate("/settings")}
+                  className="w-full px-3 py-2 rounded-md bg-secondary text-xs text-foreground hover:bg-accent transition-colors"
+                >
+                  Open Settings to Configure GitHub
+                </button>
+              </div>
+            ))}
             {configTab === "logs" && (
               <div className="font-mono text-xs space-y-1.5 bg-background/50 rounded-lg p-3 max-h-80 overflow-y-auto">
-                <p className="text-success">[12:34:01] ✓ Connected to {selectedNode.data.label}</p>
-                <p className="text-success">[12:34:02] ✓ Configuration loaded</p>
-                <p className="text-info">[12:34:03] ℹ Starting execution...</p>
-                <p className="text-muted-foreground">[12:34:05] Processing pipeline stage...</p>
-                <p className="text-muted-foreground">[12:34:12] Running checks...</p>
-                <p className="text-success">[12:34:18] ✓ All checks passed</p>
-                <p className="text-warning">[12:34:19] ⚠ Minor warnings detected</p>
-                <p className="text-success">[12:34:20] ✓ Stage complete</p>
+                {visibleLogs.map((entry) => (
+                  <p key={entry.id} className={logTone[entry.level]}>
+                    [{entry.time}] [{entry.scope}] {entry.message}
+                  </p>
+                ))}
               </div>
             )}
             {configTab === "metrics" && (
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted-foreground flex items-center gap-1"><Cpu className="w-3 h-3" /> Execution Time</span>
-                  <span className="text-sm font-mono text-foreground">42s</span>
+                  <span className="text-sm font-mono text-foreground">{pipelineMetrics.durationSeconds}s</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted-foreground flex items-center gap-1"><Layers className="w-3 h-3" /> Success Rate</span>
-                  <span className="text-sm font-mono text-success">98.5%</span>
+                  <span className="text-sm font-mono text-success">{pipelineMetrics.successRate}%</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Avg Duration</span>
-                  <span className="text-sm font-mono text-foreground">38s</span>
+                  <span className="text-xs text-muted-foreground">Completed Nodes</span>
+                  <span className="text-sm font-mono text-foreground">{pipelineMetrics.success}/{pipelineMetrics.total}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Runs (7d)</span>
-                  <span className="text-sm font-mono text-foreground">156</span>
+                  <span className="text-xs text-muted-foreground">Failed / Blocked</span>
+                  <span className="text-sm font-mono text-destructive">{pipelineMetrics.failed + pipelineMetrics.blocked}</span>
                 </div>
+              </div>
+            )}
+            {configTab === "alerts" && (
+              <div className="space-y-2">
+                {pipelineAlerts.length === 0 ? (
+                  <div className="rounded-md border border-success/30 bg-success/10 p-3">
+                    <p className="text-sm font-medium text-success">No active alerts</p>
+                    <p className="text-xs text-muted-foreground mt-1">Dispatch failures and failed stages will appear here.</p>
+                  </div>
+                ) : (
+                  pipelineAlerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className={`rounded-md border p-3 ${
+                        alert.severity === "error"
+                          ? "border-destructive/30 bg-destructive/10"
+                          : "border-warning/30 bg-warning/10"
+                      }`}
+                    >
+                      <p className={`text-sm font-medium ${alert.severity === "error" ? "text-destructive" : "text-warning"}`}>
+                        {alert.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">{alert.detail}</p>
+                    </div>
+                  ))
+                )}
               </div>
             )}
             {configTab === "history" && (
@@ -892,7 +1146,6 @@ function WorkflowStudioInner() {
             )}
           </div>
         </div>
-      )}
     </div>
   );
 }

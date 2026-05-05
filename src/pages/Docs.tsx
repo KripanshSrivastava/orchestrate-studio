@@ -11,6 +11,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  Webhook,
   Workflow,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -19,6 +20,7 @@ const docNav = [
   { id: "start", label: "Start Here", icon: FileText },
   { id: "github-setup", label: "GitHub Setup", icon: Github },
   { id: "github-actions", label: "GitHub Actions", icon: Play, to: "/docs/github-actions" },
+  { id: "github-webhooks", label: "GitHub Webhooks", icon: Webhook, to: "/docs/github-webhooks" },
   { id: "provider-matrix", label: "Provider Matrix", icon: ShieldCheck },
   { id: "github-api", label: "GitHub API Flow", icon: Server },
   { id: "auth", label: "Auth & Tenancy", icon: LockKeyhole },
@@ -358,12 +360,20 @@ export default function Docs() {
                       Use it after GitHub is connected to configure workflow file, branch, status checks, and dispatch endpoints.
                     </p>
                   </div>
-                  <Link
-                    to="/docs/github-actions"
-                    className="inline-flex h-9 items-center justify-center rounded-md border border-white/20 px-3 text-sm text-white transition-colors hover:bg-white hover:text-black"
-                  >
-                    Open GitHub Actions Docs
-                  </Link>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      to="/docs/github-actions"
+                      className="inline-flex h-9 items-center justify-center rounded-md border border-white/20 px-3 text-sm text-white transition-colors hover:bg-white hover:text-black"
+                    >
+                      Open GitHub Actions Docs
+                    </Link>
+                    <Link
+                      to="/docs/github-webhooks"
+                      className="inline-flex h-9 items-center justify-center rounded-md border border-white/20 px-3 text-sm text-white transition-colors hover:bg-white hover:text-black"
+                    >
+                      Open Webhook Docs
+                    </Link>
+                  </div>
                 </div>
               </div>
               <div className="mt-4 border border-white/10 bg-white/[0.03] p-4">

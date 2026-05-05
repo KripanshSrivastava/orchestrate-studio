@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Server,
   ShieldCheck,
+  Webhook,
   Workflow,
 } from "lucide-react";
 
@@ -15,6 +16,7 @@ const docNav = [
   { id: "start", label: "Start Here", icon: FileText, to: "/docs#start" },
   { id: "github-setup", label: "GitHub Setup", icon: Github, to: "/docs#github-setup" },
   { id: "github-actions", label: "GitHub Actions", icon: Play, to: "/docs/github-actions", active: true },
+  { id: "github-webhooks", label: "GitHub Webhooks", icon: Webhook, to: "/docs/github-webhooks" },
   { id: "provider-matrix", label: "Provider Matrix", icon: ShieldCheck, to: "/docs#provider-matrix" },
   { id: "github-api", label: "GitHub API Flow", icon: Server, to: "/docs#github-api" },
   { id: "auth", label: "Auth & Tenancy", icon: ShieldCheck, to: "/docs#auth" },

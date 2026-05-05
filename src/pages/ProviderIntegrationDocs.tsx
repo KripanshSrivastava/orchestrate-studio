@@ -12,6 +12,7 @@ import {
   Server,
   ShieldCheck,
   ShipWheel,
+  Webhook,
 } from "lucide-react";
 
 type ProviderDoc = {
@@ -505,6 +506,10 @@ export default function ProviderIntegrationDocs() {
               <Link to="/docs/github-actions" className="flex h-10 items-center gap-3 rounded-md px-3 text-sm text-white/70 transition-colors hover:bg-white hover:text-black">
                 <Play className="h-4 w-4" />
                 <span>GitHub Actions</span>
+              </Link>
+              <Link to="/docs/github-webhooks" className="flex h-10 items-center gap-3 rounded-md px-3 text-sm text-white/70 transition-colors hover:bg-white hover:text-black">
+                <Webhook className="h-4 w-4" />
+                <span>GitHub Webhooks</span>
               </Link>
               <div className="pt-3">
                 <p className="px-3 pb-2 text-[11px] uppercase tracking-[0.16em] text-white/40">Providers</p>

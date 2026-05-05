@@ -8,6 +8,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
 import WorkflowStudio from "./pages/WorkflowStudio";
+import WorkflowBuilder from "./pages/WorkflowBuilder";
 import Applications from "./pages/Applications";
 import Monitoring from "./pages/Monitoring";
 import Security from "./pages/Security";
@@ -17,6 +18,7 @@ import Deployments from "./pages/Deployments";
 import Settings from "./pages/Settings";
 import Docs from "./pages/Docs";
 import GithubActionsDocs from "./pages/GithubActionsDocs";
+import GithubWebhooksDocs from "./pages/GithubWebhooksDocs";
 import ProviderIntegrationDocs from "./pages/ProviderIntegrationDocs";
 import LoginPage from "./pages/LoginPage";
 import NotFound from "./pages/NotFound";
@@ -34,6 +36,7 @@ const App = () => (
           <Route path="/login" element={<LoginPage />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/docs/github-actions" element={<GithubActionsDocs />} />
+          <Route path="/docs/github-webhooks" element={<GithubWebhooksDocs />} />
           <Route path="/docs/integrations/:providerId" element={<ProviderIntegrationDocs />} />
           
           {/* Protected Routes */}
@@ -41,6 +44,7 @@ const App = () => (
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/workflows" element={<WorkflowStudio />} />
+              <Route path="/workflows/:templateId" element={<WorkflowBuilder />} />
               <Route path="/applications" element={<Applications />} />
               <Route path="/monitoring" element={<Monitoring />} />
               <Route path="/security" element={<Security />} />

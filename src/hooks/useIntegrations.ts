@@ -157,7 +157,7 @@ export const useIntegrations = () => {
     fetchState();
   }, []);
 
-  const connectIntegration = async (integrationId: string, values: Record<string, string>) => {
+  const connectIntegration = async (integrationId: string, values: Record<string, string>): Promise<IntegrationState> => {
     if (!keycloak.token) {
       throw new Error("Authentication required");
     }
@@ -177,6 +177,8 @@ export const useIntegrations = () => {
       ...prev,
       [integrationId]: data.state,
     }));
+
+    return data.state as IntegrationState;
   };
 
   const disconnectIntegration = async (integrationId: string) => {

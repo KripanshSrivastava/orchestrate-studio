@@ -76,7 +76,12 @@ export function validateUserClaims(
   decoded: any,
   traceId: string
 ): { valid: boolean; message: string; user?: any } {
-  const requiredClaims = ['sub', 'email', 'name', 'preferred_username'];
+  // Check if this is a service account token (has azp/client_id but no email)
+  const isServiceAccount = (decoded.azp || decoded.client_id) && !decoded.email;
+  
+  // Service accounts require: sub, azp/client_id
+  // User tokens require: sub, email, name, preferred_username
+  const requiredClaims = isServiceAccount ? ['sub'] : ['sub', 'email', 'name', 'preferred_username'];
   const missingClaims = requiredClaims.filter((claim) => !decoded[claim]);
 
   if (missingClaims.length > 0) {
@@ -90,12 +95,14 @@ export function validateUserClaims(
     return { valid: false, message: 'Invalid subject claim' };
   }
 
-  if (typeof decoded.email !== 'string' || !decoded.email.includes('@')) {
+  // For user tokens, validate email format
+  if (!isServiceAccount && (typeof decoded.email !== 'string' || !decoded.email.includes('@'))) {
     console.warn(`[${traceId}] Invalid email claim`);
     return { valid: false, message: 'Invalid email claim' };
   }
 
-  console.info(`[${traceId}] User claims valid - sub: ${decoded.sub}, email: ${decoded.email}`);
+  const tokenType = isServiceAccount ? 'service account' : 'user';
+  console.info(`[${traceId}] ${tokenType} claims valid - sub: ${decoded.sub}`);
   const roles = decoded.realm_access?.roles || [];
 
   return {
@@ -103,11 +110,12 @@ export function validateUserClaims(
     message: 'User claims valid',
     user: {
       id: decoded.sub,
-      email: decoded.email,
-      name: decoded.name,
-      preferred_username: decoded.preferred_username,
+      email: decoded.email || `service-account-${decoded.sub.substring(0, 8)}@internal`,
+      name: decoded.name || decoded.preferred_username || 'Service Account',
+      preferred_username: decoded.preferred_username || decoded.azp || 'service-account',
       realm_access: decoded.realm_access,
       org_id: getOrgIdFromRoles(roles),
+      isServiceAccount,
     },
   };
 }
@@ -186,6 +194,17 @@ export const verifyToken = async (
         traceId,
       });
       return;
+    }
+
+    // Allow overriding email/name from request body for service accounts (useful for testing)
+    if (claimsValidation.user?.isServiceAccount && process.env.NODE_ENV === 'development') {
+      const bodyEmail = (req.body as any)?.email;
+      const bodyName = (req.body as any)?.name;
+      if (bodyEmail) claimsValidation.user.email = bodyEmail;
+      if (bodyName) claimsValidation.user.name = bodyName;
+      if (bodyEmail || bodyName) {
+        console.info(`[${traceId}] Service account claims overridden from request body`);
+      }
     }
 
     req.user = claimsValidation.user;

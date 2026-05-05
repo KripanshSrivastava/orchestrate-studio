@@ -17,6 +17,10 @@ import provisioningRoutes from '../api/routes/provisioningRoutes.js';
 import workflowRoutes from '../api/routes/workflowRoutes.js';
 import webhookRoutes from '../api/routes/webhookRoutes.js';
 import runRoutes from '../api/routes/runRoutes.js';
+import infraRoutes from '../api/routes/infraRoutes.js';
+import appVerificationRoutes from '../api/routes/appVerificationRoutes.js';
+import projectRoutes from '../api/routes/projectRoutes.js';
+import platformRoutes from '../api/routes/platformRoutes.js';
 import { checkDatabaseConnection, query } from '../database/pool.js';
 import { correlationIdMiddleware } from '../middleware/correlationIdMiddleware.js';
 import { globalErrorHandler } from '../middleware/errorHandler.js';
@@ -183,8 +187,13 @@ app.use('/api/integrations', auditLog, integrationRoutes);
 app.use('/api/applications', auditLog, applicationRoutes);
 app.use('/api/provisioning', auditLog, provisioningRoutes);
 app.use('/api/workflows', auditLog, workflowRoutes);
+app.use('/api/runs', auditLog, runRoutes);
 app.use('/webhooks', webhookRoutes);
 app.use('/runs', runRoutes);
+app.use('/infra', infraRoutes);
+app.use('/api/app-verification', appVerificationRoutes);
+app.use('/projects', projectRoutes);
+app.use('/api/platform', platformRoutes);
 
 /**
  * Health check endpoint (K8s liveness)
