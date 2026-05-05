@@ -144,7 +144,8 @@ describe('ApplicationService', () => {
     const requestHash = buildHash(payload);
 
     const firstClient = makeClient([
-      createQueryResult([]),
+      createQueryResult([]), // BEGIN
+      createQueryResult([]), // SELECT (no existing idempotency key)
       createQueryResult([
         {
           id: 'app-100',
@@ -155,12 +156,13 @@ describe('ApplicationService', () => {
           created_at: new Date('2026-02-01T00:00:00.000Z'),
           updated_at: new Date('2026-02-01T00:00:00.000Z'),
         },
-      ]),
-      createQueryResult([]),
-      createQueryResult([]),
+      ]), // INSERT into applications
+      createQueryResult([]), // INSERT into api_idempotency_keys
+      createQueryResult([]), // COMMIT
     ]);
 
     const secondClient = makeClient([
+      createQueryResult([]), // BEGIN
       createQueryResult([
         {
           request_hash: requestHash,
@@ -174,7 +176,8 @@ describe('ApplicationService', () => {
             updated_at: '2026-02-01T00:00:00.000Z',
           },
         },
-      ]),
+      ]), // SELECT (existing idempotency key found)
+      createQueryResult([]), // COMMIT
     ]);
 
     mocks.connect

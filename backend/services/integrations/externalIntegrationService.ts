@@ -142,30 +142,23 @@ const testDockerHub = async (values: IntegrationValues): Promise<ExternalIntegra
   }
 
   try {
-    const login = await request<{ token?: string }>({
+    const accessToken = await request<{ access_token?: string }>({
       method: 'POST',
-      url: 'https://hub.docker.com/v2/users/login/',
+      url: 'https://hub.docker.com/v2/auth/token',
       headers: { 'Content-Type': 'application/json' },
       data: {
-        username,
-        password: token,
+        identifier: username,
+        secret: token,
       },
     });
 
-    if (!login.token) {
+    if (!accessToken.access_token) {
       return failure('Docker Hub did not return an API session token', { username });
     }
 
-    const user = await request<{ username?: string; full_name?: string; email?: string; is_active?: boolean }>({
-      method: 'GET',
-      url: 'https://hub.docker.com/v2/user/',
-      headers: { Authorization: `JWT ${login.token}` },
-    });
-
-    return success(`Docker Hub connected as ${user.username || username}`, {
-      username: user.username || username,
-      fullName: user.full_name || null,
-      active: user.is_active ?? null,
+    return success(`Docker Hub connected as ${username}`, {
+      username,
+      authMethod: 'access-token',
     });
   } catch (error) {
     return failure(`Docker Hub verification failed: ${messageFromError(error, 'Unable to reach Docker Hub')}`, {

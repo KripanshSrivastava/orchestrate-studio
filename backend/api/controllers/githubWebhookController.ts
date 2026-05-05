@@ -6,6 +6,7 @@ import {
   processGithubPushEvent,
   ParsedGithubPushEvent,
 } from '../../services/integrations/githubWebhookService.js';
+import { getGithubWebhookConfigByRepository } from '../../services/integrations/githubWebhookConfigService.js';
 import { updateExecutionRun } from '../../services/workflow/workflowExecutionService.js';
 
 interface GithubPushPayload {
@@ -26,13 +27,40 @@ interface GithubPushPayload {
   };
 }
 
+type GithubWebhookPayload = GithubPushPayload & WorkflowRunPayload;
+
 type WorkflowRunPayload = {
+  repository?: {
+    full_name?: string;
+    name?: string;
+  };
   workflow_run?: {
     id?: number;
     status?: string;
     conclusion?: string | null;
     inputs?: Record<string, string | number | null>;
   };
+};
+
+const getPayloadRepository = (payload: GithubWebhookPayload): string => {
+  return payload.repository?.full_name || payload.repository?.name || '';
+};
+
+const getSecretForPayload = async (payload: GithubWebhookPayload): Promise<string | null> => {
+  const repository = getPayloadRepository(payload);
+
+  if (repository) {
+    try {
+      const config = await getGithubWebhookConfigByRepository(repository);
+      if (config?.secret) {
+        return config.secret;
+      }
+    } catch (error) {
+      console.error('[github-webhook] failed to load saved webhook config:', error);
+    }
+  }
+
+  return process.env.GITHUB_WEBHOOK_SECRET || null;
 };
 
 const mapWorkflowStatus = (status?: string, conclusion?: string | null): string => {
@@ -96,12 +124,6 @@ const parsePushPayload = (event: string, payload: GithubPushPayload): ParsedGith
 };
 
 export const handleGithubWebhook = async (req: Request, res: Response) => {
-  const secret = process.env.GITHUB_WEBHOOK_SECRET;
-  if (!secret) {
-    res.status(500).json({ success: false, error: 'GITHUB_WEBHOOK_SECRET is not configured' });
-    return;
-  }
-
   const signature = getSignature(req);
   const payloadBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
 
@@ -110,16 +132,25 @@ export const handleGithubWebhook = async (req: Request, res: Response) => {
     return;
   }
 
-  if (!isValidSignature(secret, payloadBuffer, signature)) {
-    res.status(401).json({ success: false, error: 'Invalid webhook signature' });
+  let payload: GithubWebhookPayload;
+  try {
+    payload = JSON.parse(payloadBuffer.toString('utf-8')) as GithubWebhookPayload;
+  } catch (_error) {
+    res.status(400).json({ success: false, error: 'Invalid JSON payload' });
     return;
   }
 
-  let payload: GithubPushPayload;
-  try {
-    payload = JSON.parse(payloadBuffer.toString('utf-8')) as GithubPushPayload;
-  } catch (_error) {
-    res.status(400).json({ success: false, error: 'Invalid JSON payload' });
+  const secret = await getSecretForPayload(payload);
+  if (!secret) {
+    res.status(500).json({
+      success: false,
+      error: `No webhook secret configured for ${getPayloadRepository(payload) || 'this repository'}`,
+    });
+    return;
+  }
+
+  if (!isValidSignature(secret, payloadBuffer, signature)) {
+    res.status(401).json({ success: false, error: 'Invalid webhook signature' });
     return;
   }
 

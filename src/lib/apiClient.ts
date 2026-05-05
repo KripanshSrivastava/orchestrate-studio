@@ -67,7 +67,16 @@ export const apiCall = async (
 export const apiGet = async <T>(endpoint: string): Promise<T> => {
   const response = await apiCall(endpoint, { method: 'GET' });
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    let errMsg = `API Error: ${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json();
+      if (body.error) {
+        errMsg = typeof body.error === 'string' ? body.error : body.error.message || errMsg;
+      } else if (body.message) {
+        errMsg = body.message;
+      }
+    } catch (_) {}
+    throw new Error(errMsg);
   }
   return response.json();
 };
@@ -84,7 +93,16 @@ export const apiPost = async <T>(
     body: data ? JSON.stringify(data) : undefined,
   });
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    let errMsg = `API Error: ${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json();
+      if (body.error) {
+        errMsg = typeof body.error === 'string' ? body.error : body.error.message || errMsg;
+      } else if (body.message) {
+        errMsg = body.message;
+      }
+    } catch (_) {}
+    throw new Error(errMsg);
   }
   return response.json();
 };
@@ -101,7 +119,16 @@ export const apiPut = async <T>(
     body: data ? JSON.stringify(data) : undefined,
   });
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    let errMsg = `API Error: ${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json();
+      if (body.error) {
+        errMsg = typeof body.error === 'string' ? body.error : body.error.message || errMsg;
+      } else if (body.message) {
+        errMsg = body.message;
+      }
+    } catch (_) {}
+    throw new Error(errMsg);
   }
   return response.json();
 };
@@ -112,7 +139,16 @@ export const apiPut = async <T>(
 export const apiDelete = async <T>(endpoint: string): Promise<T> => {
   const response = await apiCall(endpoint, { method: 'DELETE' });
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    let errMsg = `API Error: ${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json();
+      if (body.error) {
+        errMsg = typeof body.error === 'string' ? body.error : body.error.message || errMsg;
+      } else if (body.message) {
+        errMsg = body.message;
+      }
+    } catch (_) {}
+    throw new Error(errMsg);
   }
   return response.json();
 };

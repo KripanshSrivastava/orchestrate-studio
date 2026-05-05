@@ -79,7 +79,7 @@ export const createWorkflow = async (
 
     return normalizeWorkflow(record);
   } catch (error) {
-    mapPgError(error);
+    return mapPgError(error);
   }
 };
 

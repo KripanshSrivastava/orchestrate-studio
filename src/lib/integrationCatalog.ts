@@ -8,7 +8,7 @@ export interface IntegrationField {
 export interface IntegrationDefinition {
   id: string;
   name: string;
-  group: "Git Providers" | "CI Tools" | "Security & Quality" | "Delivery" | "Observability";
+  group: "Git Providers" | "CI Tools" | "Cloud Providers" | "Delivery";
   description: string;
   nodeTypes: string[];
   fields: IntegrationField[];
@@ -39,85 +39,38 @@ export const integrationCatalog: IntegrationDefinition[] = [
     ],
   },
   {
-    id: "snyk",
-    name: "Snyk",
-    group: "Security & Quality",
-    description: "Dependency and container vulnerability scanning.",
-    nodeTypes: ["snyk"],
+    id: "github-webhooks",
+    name: "GitHub Webhooks",
+    group: "CI Tools",
+    description: "Receive repository push and workflow status events from GitHub.",
+    nodeTypes: ["github-webhook"],
     fields: [
-      { key: "orgId", label: "Organization ID", placeholder: "your-snyk-org-id" },
-      { key: "apiToken", label: "API Token", placeholder: "snyk-token", type: "password" },
+      { key: "repository", label: "Repository", placeholder: "owner/repo or https://github.com/owner/repo" },
+      { key: "secret", label: "Webhook Secret", placeholder: "Use the same value in GitHub webhook settings", type: "password" },
+      { key: "events", label: "Events", placeholder: "push,workflow_run" },
     ],
   },
   {
-    id: "sonarqube",
-    name: "SonarQube",
-    group: "Security & Quality",
-    description: "Static code analysis and quality gates.",
-    nodeTypes: ["sonarqube"],
+    id: "aws-credentials",
+    name: "AWS Credentials",
+    group: "Cloud Providers",
+    description: "AWS access keys used by provisioning and deployment workflows.",
+    nodeTypes: ["aws"],
     fields: [
-      { key: "serverUrl", label: "Server URL", placeholder: "https://sonar.company.com", type: "url" },
-      { key: "token", label: "Token", placeholder: "sonar-token", type: "password" },
+      { key: "accessKeyId", label: "Access Key ID", placeholder: "AKIA..." },
+      { key: "secretAccessKey", label: "Secret Access Key", placeholder: "AWS secret access key", type: "password" },
+      { key: "region", label: "Default Region", placeholder: "ap-south-1" },
     ],
-  },
-  {
-    id: "trivy",
-    name: "Trivy",
-    group: "Security & Quality",
-    description: "Container image and IaC scanning.",
-    nodeTypes: ["trivy"],
-    fields: [],
   },
   {
     id: "dockerhub",
-    name: "Docker Hub",
+    name: "Docker",
     group: "Delivery",
-    description: "Push and pull container images.",
+    description: "Docker registry credentials for build and deploy workflows.",
     nodeTypes: ["dockerhub"],
     fields: [
       { key: "username", label: "Username", placeholder: "dockerhub-user" },
       { key: "token", label: "Access Token", placeholder: "docker-token", type: "password" },
-    ],
-  },
-  {
-    id: "argocd",
-    name: "ArgoCD",
-    group: "Delivery",
-    description: "Sync manifests from GitOps repositories.",
-    nodeTypes: ["argocd"],
-    fields: [
-      { key: "serverUrl", label: "ArgoCD URL", placeholder: "https://argocd.company.com", type: "url" },
-      { key: "token", label: "API Token", placeholder: "argocd-token", type: "password" },
-    ],
-  },
-  {
-    id: "prometheus",
-    name: "Prometheus",
-    group: "Observability",
-    description: "Collect and query runtime metrics.",
-    nodeTypes: ["prometheus"],
-    fields: [
-      { key: "serverUrl", label: "Prometheus URL", placeholder: "http://prometheus:9090", type: "url" },
-    ],
-  },
-  {
-    id: "elk",
-    name: "ELK Stack",
-    group: "Observability",
-    description: "Log indexing and search integration.",
-    nodeTypes: ["elk-stack", "efk"],
-    fields: [
-      { key: "elasticsearchUrl", label: "Elasticsearch URL", placeholder: "http://elasticsearch:9200", type: "url" },
-    ],
-  },
-  {
-    id: "alertmanager",
-    name: "Alertmanager",
-    group: "Observability",
-    description: "Route and deduplicate alerts.",
-    nodeTypes: ["alertmanager"],
-    fields: [
-      { key: "serverUrl", label: "Alertmanager URL", placeholder: "http://alertmanager:9093", type: "url" },
     ],
   },
 ];
